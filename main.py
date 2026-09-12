@@ -9,17 +9,17 @@ from moviepy.editor import (
     ColorClip
 )
 
-# جلب المفاتيح من متغيرات البيئة السرية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
 
+# قائمة القراء وروابط الصوت المباشرة الموثوقة (EveryAyah CDN)
 RECITERS = [
-    {"edition": "ar.alafasy", "name": "مشاري العفاسي"},
-    {"edition": "ar.minshawi", "name": "محمد صديق المنشاوي"},
-    {"edition": "ar.abdulbasitmurattal", "name": "عبد الباسط عبد الصمد"},
-    {"edition": "ar.yasseraldossari", "name": "ياسر الدوسري"},
-    {"edition": "ar.saoodshuraym", "name": "سعود الشريم"}
+    {"subfolder": "Alafasy_128kbps", "name": "مشاري العفاسي"},
+    {"subfolder": "Minshawy_Murattal_128kbps", "name": "محمد صديق المنشاوي"},
+    {"subfolder": "Abdul_Basit_Murattal_192kbps", "name": "عبد الباسط عبد الصمد"},
+    {"subfolder": "Yasser_Ad-Dussary_128kbps", "name": "ياسر الدوسري"},
+    {"subfolder": "Saood_ash-Shuraym_128kbps", "name": "سعود الشريم"}
 ]
 
 PEXELS_QUERIES = [
@@ -33,22 +33,35 @@ PEXELS_QUERIES = [
 def get_random_verse_and_audio():
     reciter = random.choice(RECITERS)
     verse_number = random.randint(1, 6236)
-    url = f"https://api.alquran.cloud/v1/ayah/{verse_number}/{reciter['edition']}"
     
+    # 1. جلب بيانات الآية النصية
+    url = f"https://api.alquran.cloud/v1/ayah/{verse_number}"
     res = requests.get(url).json()
     data = res["data"]
     
     verse_text = data["text"]
-    audio_url = data["audio"]
     surah_name = data["surah"]["name"]
-    ayah_num = data["numberInSurah"]
+    surah_num = str(data["surah"]["number"]).zfill(3)
+    ayah_num = str(data["numberInSurah"]).zfill(3)
     
-    # تحميل التلاوة
-    audio_data = requests.get(audio_url).content
-    with open("audio.mp3", "wb") as f:
-        f.write(audio_data)
+    # 2. رابط صوتي مباشر وثابت 100% لتفادي مشاكل التحميل
+    audio_url = f"https://everyayah.com/data/{reciter['subfolder']}/{surah_num}{ayah_num}.mp3"
+    
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(audio_url, headers=headers)
+    
+    if response.status_code == 200 and len(response.content) > 5000:
+        with open("audio.mp3", "wb") as f:
+            f.write(response.content)
+    else:
+        # رابط بديل إذا حدث أي انقطاع
+        fallback_url = f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{verse_number}.mp3"
+        fallback_res = requests.get(fallback_url, headers=headers)
+        with open("audio.mp3", "wb") as f:
+            f.write(fallback_res.content)
+        reciter["name"] = "مشاري العفاسي"
         
-    return verse_text, surah_name, ayah_num, reciter["name"]
+    return verse_text, surah_name, int(ayah_num), reciter["name"]
 
 def download_dynamic_background():
     headers = {"Authorization": PEXELS_API_KEY}
@@ -58,7 +71,6 @@ def download_dynamic_background():
     res = requests.get(url, headers=headers).json()
     video_item = random.choice(res["videos"])
     
-    # اختيار دقة عمودية 1080p أو أقل
     video_file = next(f for f in video_item["video_files"] if f["width"] and f["width"] <= 1080)
     video_url = video_file["link"]
     
@@ -104,7 +116,6 @@ def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
     )
 
 def upload_video_temporarily():
-    # رفع الفيديو مؤقتاً للحصول على رابط ويب مباشر لسحبه بواسطة Buffer
     url = "https://catbox.moe/user/api.php"
     data = {"reqtype": "fileupload"}
     with open("final_reel.mp4", "rb") as f:
@@ -118,14 +129,14 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
         f"القارئ: {reciter_name} | آية رقم: {ayah_num}\n\n"
         f"صلّ على النبي ﷺ واكتب شيئاً تؤجر عليه في التعليقات 🌿\n"
         f"أعد نشرها لتشارك الأجر والدال على الخير كفاعله 🤲\n\n"
-        f"#قرآن #تلاوات_خاشعة #سورة_{surah_name.replace(' ', '_')} #{reciter_name.replace(' ', '_')} #راحة_نفسية #fyp #explore #quran"
+        f"#قرآن #تلاوات_خاشعة #سورة_{surah_name.replace(' ', '_')} #{reciter_name.replace(' ', '_')} #fyp #explore #quran"
     )
 
     url = f"https://api.bufferapp.com/1/updates/create.json?access_token={BUFFER_ACCESS_TOKEN}"
     payload = {
         "profile_ids[]": [BUFFER_CHANNEL_ID],
         "text": caption,
-        "now": True,  # نشر فوري على الحساب
+        "now": True,
         "media[video]": video_url
     }
     response = requests.post(url, data=payload)
