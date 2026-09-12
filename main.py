@@ -9,7 +9,6 @@ from moviepy.editor import (
     ColorClip
 )
 
-# جلب المفاتيح من متغيرات البيئة السرية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
@@ -157,6 +156,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
             "channelId": BUFFER_CHANNEL_ID,
             "text": caption,
             "mode": "shareNow",
+            "schedulingType": "automatic",
             "assets": [
                 {
                     "video": {
