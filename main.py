@@ -14,7 +14,6 @@ PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
 
-# قائمة القراء وروابط الصوت المباشرة الموثوقة (EveryAyah CDN)
 RECITERS = [
     {"subfolder": "Alafasy_128kbps", "name": "مشاري العفاسي"},
     {"subfolder": "Minshawy_Murattal_128kbps", "name": "محمد صديق المنشاوي"},
@@ -23,7 +22,6 @@ RECITERS = [
     {"subfolder": "Saood_ash-Shuraym_128kbps", "name": "سعود الشريم"}
 ]
 
-# كلمات بحث لفيديوهات الخلفية بدقة عمودية وطبيعة هادئة
 PEXELS_QUERIES = [
     "cinematic rain vertical",
     "calm ocean waves vertical",
@@ -36,7 +34,6 @@ def get_random_verse_and_audio():
     reciter = random.choice(RECITERS)
     verse_number = random.randint(1, 6236)
     
-    # 1. جلب بيانات الآية النصية
     url = f"https://api.alquran.cloud/v1/ayah/{verse_number}"
     res = requests.get(url).json()
     data = res["data"]
@@ -46,9 +43,7 @@ def get_random_verse_and_audio():
     surah_num = str(data["surah"]["number"]).zfill(3)
     ayah_num = str(data["numberInSurah"]).zfill(3)
     
-    # 2. رابط صوتي مباشر وثابت 100%
     audio_url = f"https://everyayah.com/data/{reciter['subfolder']}/{surah_num}{ayah_num}.mp3"
-    
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(audio_url, headers=headers)
     
@@ -117,12 +112,15 @@ def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
     )
 
 def upload_video_temporarily():
-    url = "https://catbox.moe/user/api.php"
-    data = {"reqtype": "fileupload"}
+    url = "https://tmpfiles.org/api/v1/upload"
     with open("final_reel.mp4", "rb") as f:
-        files = {"fileToUpload": f}
-        res = requests.post(url, data=data, files=files)
-        return res.text.strip()
+        files = {"file": f}
+        res = requests.post(url, files=files).json()
+    
+    # تحويل رابط صفحة العرض إلى رابط تحميل مباشر بإضافة dl/
+    raw_url = res["data"]["url"]
+    direct_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+    return direct_url
 
 def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
     caption = (
@@ -133,7 +131,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
         f"#قرآن #تلاوات_خاشعة #سورة_{surah_name.replace(' ', '_')} #{reciter_name.replace(' ', '_')} #fyp #explore #quran"
     )
 
-    url = "https://api.bufferapp.com/graphql"
+    url = "https://graph.buffer.com"
     headers = {
         "Authorization": f"Bearer {BUFFER_ACCESS_TOKEN}",
         "Content-Type": "application/json"
@@ -172,5 +170,5 @@ if __name__ == "__main__":
     download_dynamic_background()
     build_quran_video(v_text, s_name, a_num, r_name)
     public_url = upload_video_temporarily()
-    print("Uploaded temporary URL:", public_url)
+    print("Uploaded direct video URL:", public_url)
     post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name)
