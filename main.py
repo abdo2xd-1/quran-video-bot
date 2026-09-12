@@ -136,7 +136,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
         "Content-Type": "application/json"
     }
 
-    # استعلام مبسط وصحيح متوافق مع بنية Buffer الحالية
     query = """
     mutation CreatePost($input: CreatePostInput!) {
       createPost(input: $input) {
@@ -157,11 +156,12 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
         "input": {
             "channelId": BUFFER_CHANNEL_ID,
             "text": caption,
-            "schedulingType": "automatic",
+            "mode": "shareNow",
             "assets": [
                 {
-                    "type": "video",
-                    "url": video_url
+                    "video": {
+                        "url": video_url
+                    }
                 }
             ]
         }
