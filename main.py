@@ -9,7 +9,6 @@ from moviepy.editor import (
     ColorClip
 )
 
-# جلب المفاتيح من متغيرات البيئة السرية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
@@ -117,7 +116,6 @@ def upload_video_temporarily():
         files = {"file": f}
         res = requests.post(url, files=files).json()
     
-    # تحويل رابط صفحة العرض إلى رابط تحميل مباشر بإضافة dl/
     raw_url = res["data"]["url"]
     direct_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
     return direct_url
@@ -131,7 +129,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
         f"#قرآن #تلاوات_خاشعة #سورة_{surah_name.replace(' ', '_')} #{reciter_name.replace(' ', '_')} #fyp #explore #quran"
     )
 
-    url = "https://graph.buffer.com"
+    url = "https://api.buffer.com/graphql"
     headers = {
         "Authorization": f"Bearer {BUFFER_ACCESS_TOKEN}",
         "Content-Type": "application/json"
@@ -163,7 +161,8 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
     }
 
     response = requests.post(url, headers=headers, json={"query": query, "variables": variables})
-    print("Buffer GraphQL Response:", response.text)
+    print("Buffer Response Status:", response.status_code)
+    print("Buffer Response Body:", response.text)
 
 if __name__ == "__main__":
     v_text, s_name, a_num, r_name = get_random_verse_and_audio()
