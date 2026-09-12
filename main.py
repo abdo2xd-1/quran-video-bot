@@ -9,9 +9,10 @@ from moviepy.editor import (
     ColorClip
 )
 
+# جلب المفاتيح من متغيرات البيئة السرية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
+BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
 
 RECITERS = [
     {"edition": "ar.alafasy", "name": "مشاري العفاسي"},
@@ -42,6 +43,7 @@ def get_random_verse_and_audio():
     surah_name = data["surah"]["name"]
     ayah_num = data["numberInSurah"]
     
+    # تحميل التلاوة
     audio_data = requests.get(audio_url).content
     with open("audio.mp3", "wb") as f:
         f.write(audio_data)
@@ -56,6 +58,7 @@ def download_dynamic_background():
     res = requests.get(url, headers=headers).json()
     video_item = random.choice(res["videos"])
     
+    # اختيار دقة عمودية 1080p أو أقل
     video_file = next(f for f in video_item["video_files"] if f["width"] and f["width"] <= 1080)
     video_url = video_file["link"]
     
@@ -100,26 +103,37 @@ def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
         preset="fast"
     )
 
-def send_video_with_seo_caption(surah_name, ayah_num, reciter_name):
+def upload_video_temporarily():
+    # رفع الفيديو مؤقتاً للحصول على رابط ويب مباشر لسحبه بواسطة Buffer
+    url = "https://catbox.moe/user/api.php"
+    data = {"reqtype": "fileupload"}
+    with open("final_reel.mp4", "rb") as f:
+        files = {"fileToUpload": f}
+        res = requests.post(url, data=data, files=files)
+        return res.text.strip()
+
+def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
     caption = (
         f"تلاوة خاشعة لآيات من سورة {surah_name} 🤍\n"
         f"القارئ: {reciter_name} | آية رقم: {ayah_num}\n\n"
         f"صلّ على النبي ﷺ واكتب شيئاً تؤجر عليه في التعليقات 🌿\n"
-        f"أعد نشر الفيديو لتشارك الأجر والدال على الخير كفاعله 🤲\n\n"
+        f"أعد نشرها لتشارك الأجر والدال على الخير كفاعله 🤲\n\n"
         f"#قرآن #تلاوات_خاشعة #سورة_{surah_name.replace(' ', '_')} #{reciter_name.replace(' ', '_')} #راحة_نفسية #fyp #explore #quran"
     )
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
-    with open("final_reel.mp4", "rb") as video:
-        files = {"video": video}
-        data = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "caption": caption
-        }
-        requests.post(url, files=files, data=data)
+    url = f"https://api.bufferapp.com/1/updates/create.json?access_token={BUFFER_ACCESS_TOKEN}"
+    payload = {
+        "profile_ids[]": [BUFFER_CHANNEL_ID],
+        "text": caption,
+        "now": True,  # نشر فوري على الحساب
+        "media[video]": video_url
+    }
+    response = requests.post(url, data=payload)
+    print("Buffer API Response:", response.text)
 
 if __name__ == "__main__":
     v_text, s_name, a_num, r_name = get_random_verse_and_audio()
     download_dynamic_background()
     build_quran_video(v_text, s_name, a_num, r_name)
-    send_video_with_seo_caption(s_name, a_num, r_name)
+    public_url = upload_video_temporarily()
+    post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name)
