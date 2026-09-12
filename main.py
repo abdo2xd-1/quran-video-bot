@@ -9,6 +9,7 @@ from moviepy.editor import (
     ColorClip
 )
 
+# جلب المفاتيح من متغيرات البيئة السرية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
@@ -22,6 +23,7 @@ RECITERS = [
     {"subfolder": "Saood_ash-Shuraym_128kbps", "name": "سعود الشريم"}
 ]
 
+# كلمات بحث لفيديوهات الخلفية بدقة عمودية وطبيعة هادئة
 PEXELS_QUERIES = [
     "cinematic rain vertical",
     "calm ocean waves vertical",
@@ -44,7 +46,7 @@ def get_random_verse_and_audio():
     surah_num = str(data["surah"]["number"]).zfill(3)
     ayah_num = str(data["numberInSurah"]).zfill(3)
     
-    # 2. رابط صوتي مباشر وثابت 100% لتفادي مشاكل التحميل
+    # 2. رابط صوتي مباشر وثابت 100%
     audio_url = f"https://everyayah.com/data/{reciter['subfolder']}/{surah_num}{ayah_num}.mp3"
     
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -54,7 +56,6 @@ def get_random_verse_and_audio():
         with open("audio.mp3", "wb") as f:
             f.write(response.content)
     else:
-        # رابط بديل إذا حدث أي انقطاع
         fallback_url = f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{verse_number}.mp3"
         fallback_res = requests.get(fallback_url, headers=headers)
         with open("audio.mp3", "wb") as f:
@@ -71,7 +72,7 @@ def download_dynamic_background():
     res = requests.get(url, headers=headers).json()
     video_item = random.choice(res["videos"])
     
-    video_file = next(f for f in video_item["video_files"] if f["width"] and f["width"] <= 1080)
+    video_file = next(f for f in video_item["video_files"] if f.get("width") and f["width"] <= 1080)
     video_url = video_file["link"]
     
     with open("bg.mp4", "wb") as f:
@@ -132,19 +133,44 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
         f"#قرآن #تلاوات_خاشعة #سورة_{surah_name.replace(' ', '_')} #{reciter_name.replace(' ', '_')} #fyp #explore #quran"
     )
 
-    url = f"https://api.bufferapp.com/1/updates/create.json?access_token={BUFFER_ACCESS_TOKEN}"
-    payload = {
-        "profile_ids[]": [BUFFER_CHANNEL_ID],
-        "text": caption,
-        "now": True,
-        "media[video]": video_url
+    url = "https://api.bufferapp.com/graphql"
+    headers = {
+        "Authorization": f"Bearer {BUFFER_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
     }
-    response = requests.post(url, data=payload)
-    print("Buffer API Response:", response.text)
+
+    query = """
+    mutation CreatePost($input: CreatePostInput!) {
+      createPost(input: $input) {
+        post {
+          id
+          status
+        }
+      }
+    }
+    """
+
+    variables = {
+        "input": {
+            "channelId": BUFFER_CHANNEL_ID,
+            "text": caption,
+            "schedulingType": "automatic",
+            "assets": [
+                {
+                    "type": "video",
+                    "url": video_url
+                }
+            ]
+        }
+    }
+
+    response = requests.post(url, headers=headers, json={"query": query, "variables": variables})
+    print("Buffer GraphQL Response:", response.text)
 
 if __name__ == "__main__":
     v_text, s_name, a_num, r_name = get_random_verse_and_audio()
     download_dynamic_background()
     build_quran_video(v_text, s_name, a_num, r_name)
     public_url = upload_video_temporarily()
+    print("Uploaded temporary URL:", public_url)
     post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name)
