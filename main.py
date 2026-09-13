@@ -1,6 +1,7 @@
 import os
 import time
 import random
+import datetime
 import requests
 from moviepy.editor import (
     VideoFileClip,
@@ -10,7 +11,6 @@ from moviepy.editor import (
     ColorClip
 )
 
-# جلب المفاتيح الأساسية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
@@ -25,120 +25,101 @@ RECITERS = [
     {"subfolder": "Saood_ash-Shuraym_128kbps", "name": "سعود الشريم"}
 ]
 
-# كلمات بحث تضمن خلفيات طبيعية هادئة وبطيئة لراحة العين
-PEXELS_QUERIES = [
-    "rain on window vertical",
-    "calm sea waves slow motion vertical",
-    "misty forest vertical",
-    "night sky stars vertical",
-    "peaceful clouds cinematic vertical"
+# كلمات بحث سينمائية هادئة تطابق ستايل abo.3aid
+AESTHETIC_QUERIES = [
+    "cinematic calm sea sunset vertical",
+    "misty green mountains slow motion vertical",
+    "foggy forest aesthetic vertical",
+    "dark clouds ocean vertical",
+    "calm rain cinematic vertical",
+    "mecca kaaba crowd vertical",
+    "desert sunset slow motion vertical"
 ]
 
-HOOK_TEXTS = [
-    "آية تريح قلبك وتزيل همك 🌿",
-    "استمع لدقيقة لعلك تجد ضالتك 🤍",
-    "رسالة ربانية لقلبك اليوم ✨",
-    "تلاوة خاشعة تذهب الحزن 🤲"
-]
-
-def get_random_verse_and_audio():
-    reciter = random.choice(RECITERS)
-    verse_number = random.randint(1, 6236)
+def get_ayah_data():
+    # التحقق مما إذا كان اليوم هو يوم الجمعة (Friday = 4)
+    today = datetime.datetime.now().weekday()
+    is_friday = (today == 4)
     
-    url = f"https://api.alquran.cloud/v1/ayah/{verse_number}"
+    reciter = random.choice(RECITERS)
+    
+    if is_friday:
+        # اختيار آية عشوائية من سورة الكهف (سورة رقم 18 وتحتوي على 110 آيات)
+        surah_number = 18
+        ayah_in_surah = random.randint(1, 110)
+        url = f"https://api.alquran.cloud/v1/ayah/{surah_number}:{ayah_in_surah}"
+    else:
+        # اختيار آية عشوائية من القرآن الكريم
+        verse_number = random.randint(1, 6236)
+        url = f"https://api.alquran.cloud/v1/ayah/{verse_number}"
+
     res = requests.get(url).json()
     data = res["data"]
-    
+
     verse_text = data["text"]
     surah_name = data["surah"]["name"]
     surah_num = str(data["surah"]["number"]).zfill(3)
     ayah_num = str(data["numberInSurah"]).zfill(3)
-    
+
     audio_url = f"https://everyayah.com/data/{reciter['subfolder']}/{surah_num}{ayah_num}.mp3"
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(audio_url, headers=headers)
-    
+
     if response.status_code == 200 and len(response.content) > 5000:
         with open("audio.mp3", "wb") as f:
             f.write(response.content)
     else:
-        fallback_url = f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{verse_number}.mp3"
+        fallback_url = f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{data['number']}.mp3"
         fallback_res = requests.get(fallback_url, headers=headers)
         with open("audio.mp3", "wb") as f:
             f.write(fallback_res.content)
         reciter["name"] = "مشاري العفاسي"
-        
-    return verse_text, surah_name, int(ayah_num), reciter["name"]
 
-def download_dynamic_background():
+    return verse_text, surah_name, int(ayah_num), reciter["name"], is_friday
+
+def download_aesthetic_background():
     headers = {"Authorization": PEXELS_API_KEY}
-    query = random.choice(PEXELS_QUERIES)
+    query = random.choice(AESTHETIC_QUERIES)
     url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=15"
-    
+
     res = requests.get(url, headers=headers).json()
     video_item = random.choice(res["videos"])
-    
+
     video_file = next(f for f in video_item["video_files"] if f.get("width") and f["width"] <= 1080)
     video_url = video_file["link"]
-    
+
     with open("bg.mp4", "wb") as f:
         f.write(requests.get(video_url).content)
 
-def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
+def build_aesthetic_quran_video(verse_text, ayah_num):
     audio_clip = AudioFileClip("audio.mp3")
-    duration = audio_clip.duration + 1.5
+    duration = audio_clip.duration + 1.2
 
+    # تجهيز الفيديو بأبعاد التيك توك 1080x1920
     video_clip = VideoFileClip("bg.mp4").subclip(0, duration).resize((1080, 1920))
     video_clip = video_clip.set_audio(audio_clip)
 
-    # طبقة تظليل مريحة للعين وتبرز الكتابة
-    overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.48).set_duration(duration)
+    # تعتيم سينمائي داكن ناعم (Dark Tint) لإبراز جمال وتوهج الآية
+    overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.42).set_duration(duration)
 
-    font_path = "uthmanic_hafs.ttf" if os.path.exists("uthmanic_hafs.ttf") else "Arial"
+    # تحديد الخط العثماني
+    font_choice = "uthmanic_font.ttf" if os.path.exists("uthmanic_font.ttf") else "Arial"
 
-    # Hook علوي لجذب الانتباه في البداية
-    hook_msg = random.choice(HOOK_TEXTS)
-    hook_clip = TextClip(
-        hook_msg,
-        fontsize=38,
-        color='#FFFFFF',
-        font='Arial',
-        align='center'
-    ).set_duration(duration).set_position(('center', 240))
+    # تنسيق الآية داخل الأقواس العثمانية
+    quran_styled_text = f"﴿ {verse_text} ﴾"
 
-    # نص الآية مع حدود خفيفة للقراءة
+    # شاشة نقية: النص فقط في منتصف الشاشة بدون أي تشتيت بصري
     txt_clip = TextClip(
-        verse_text,
-        fontsize=52,
+        quran_styled_text,
+        fontsize=60,
         color='#FFFFFF',
-        stroke_color='#000000',
-        stroke_width=1.5,
-        font=font_path,
+        font=font_choice,
         method='caption',
-        size=(940, None),
+        size=(920, None),
         align='center'
     ).set_duration(duration).set_position(('center', 'center'))
 
-    # بيانات السورة والقارئ بالأسفل
-    meta_text = f"سورة {surah_name} - الآية ({ayah_num})\nبصوت القارئ: {reciter_name}"
-    meta_clip = TextClip(
-        meta_text,
-        fontsize=30,
-        color='#E6C687',
-        font='Arial',
-        align='center'
-    ).set_duration(duration).set_position(('center', 1580))
-
-    # عبارة حث على التفاعل والدعاء
-    cta_clip = TextClip(
-        "صلّ على النبي ﷺ واكتب شيئاً تؤجر عليه 🌿",
-        fontsize=24,
-        color='#B0B0B0',
-        font='Arial',
-        align='center'
-    ).set_duration(duration).set_position(('center', 1700))
-
-    final = CompositeVideoClip([video_clip, overlay, hook_clip, txt_clip, meta_clip, cta_clip])
+    final = CompositeVideoClip([video_clip, overlay, txt_clip])
     final.write_videofile(
         "final_reel.mp4",
         fps=30,
@@ -154,10 +135,10 @@ def upload_video_to_github_release():
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github.v3+json"
     }
-    
+
     payload = {
         "tag_name": tag,
-        "name": f"Quran Video {tag}",
+        "name": f"Quran Aesthetic {tag}",
         "draft": False,
         "prerelease": False
     }
@@ -175,19 +156,25 @@ def upload_video_to_github_release():
     asset_res = requests.post(upload_url, headers=upload_headers, data=file_data).json()
     return asset_res["browser_download_url"]
 
-def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
-    # تحسين صياغة الكابشن والهاشتاجات للبحث والتفاعل (TikTok SEO)
+def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name, is_friday):
     clean_surah = surah_name.replace(' ', '_')
     clean_reciter = reciter_name.replace(' ', '_')
-    
-    caption = (
-        f"تلاوة خاشعة من سورة {surah_name} 🤍\n"
-        f"القارئ: {reciter_name} (آية {ayah_num})\n\n"
-        f"«أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ» 🌿\n"
-        f"صلِّ على الحبيب المصطفى ﷺ، واكتب آية تحبها في التعليقات 🤲\n"
-        f"أعد نشرها لتشارك الأجر والدال على الخير كفاعله ✨\n\n"
-        f"#قرآن #قرآن_كريم #تلاوات_خاشعة #راحة_نفسية #طمأنينة #سورة_{clean_surah} #{clean_reciter} #quran #fyp #explore #viral"
-    )
+
+    # كابشن نظيف وعميق مخصص ليوم الجمعة أو الأيام العادية
+    if is_friday:
+        caption = (
+            f"سورة الكهف نورٌ ما بين الجمعتين 🤍✨\n"
+            f"القارئ: {reciter_name}\n\n"
+            f"صلّ على النبي ﷺ واكسب أجر نشرها 🌿\n\n"
+            f"#سورة_الكهف #يوم_الجمعة #قرآن #تلاوات_خاشعة #{clean_reciter} #quran #fyp"
+        )
+    else:
+        caption = (
+            f"سورة {surah_name} 🤍\n"
+            f"القارئ: {reciter_name}\n\n"
+            f"أرح مسمعك وقلبك بآيات الله 🌿\n\n"
+            f"#قرآن #تلاوات_خاشعة #راحة_نفسية #سورة_{clean_surah} #{clean_reciter} #quran #fyp #explore"
+        )
 
     url = "https://api.buffer.com/graphql"
     headers = {
@@ -232,9 +219,9 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
     print("Buffer Response Body:", response.text)
 
 if __name__ == "__main__":
-    v_text, s_name, a_num, r_name = get_random_verse_and_audio()
-    download_dynamic_background()
-    build_quran_video(v_text, s_name, a_num, r_name)
+    v_text, s_name, a_num, r_name, is_fri = get_ayah_data()
+    download_aesthetic_background()
+    build_aesthetic_quran_video(v_text, a_num)
     public_url = upload_video_to_github_release()
     print("Uploaded GitHub CDN URL:", public_url)
-    post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name)
+    post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name, is_fri)
