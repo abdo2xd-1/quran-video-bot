@@ -44,7 +44,7 @@ def get_ayah_data():
     reciter = random.choice(RECITERS)
     
     if is_friday:
-        # اختيار آية عشوائية من سورة الكهف (سورة رقم 18 وتحتوي على 110 آيات)
+        # اختيار آية عشوائية من سورة الكهف (سورة رقم 18)
         surah_number = 18
         ayah_in_surah = random.randint(1, 110)
         url = f"https://api.alquran.cloud/v1/ayah/{surah_number}:{ayah_in_surah}"
@@ -95,20 +95,20 @@ def build_aesthetic_quran_video(verse_text, ayah_num):
     audio_clip = AudioFileClip("audio.mp3")
     duration = audio_clip.duration + 1.2
 
-    # تجهيز الفيديو بأبعاد التيك توك 1080x1920
+    # أبعاد تيك توك 1080x1920
     video_clip = VideoFileClip("bg.mp4").subclip(0, duration).resize((1080, 1920))
     video_clip = video_clip.set_audio(audio_clip)
 
-    # تعتيم سينمائي داكن ناعم (Dark Tint) لإبراز جمال وتوهج الآية
+    # تعتيم سينمائي ناعم لإبراز النص
     overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.42).set_duration(duration)
 
-    # تحديد الخط العثماني
-    font_choice = "uthmanic_font.ttf" if os.path.exists("uthmanic_font.ttf") else "Arial"
+    # التأكد من صحة وجودة ملف الخط وتفادي أخطاء ImageMagick
+    font_choice = "uthmanic_font.ttf" if (os.path.exists("uthmanic_font.ttf") and os.path.getsize("uthmanic_font.ttf") > 10000) else "Scheherazade"
 
-    # تنسيق الآية داخل الأقواس العثمانية
+    # تنسيق الآية بالأقواس العثمانية
     quran_styled_text = f"﴿ {verse_text} ﴾"
 
-    # شاشة نقية: النص فقط في منتصف الشاشة بدون أي تشتيت بصري
+    # الآية فقط في منتصف الشاشة بدون تشتيت
     txt_clip = TextClip(
         quran_styled_text,
         fontsize=60,
@@ -160,7 +160,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name, is_
     clean_surah = surah_name.replace(' ', '_')
     clean_reciter = reciter_name.replace(' ', '_')
 
-    # كابشن نظيف وعميق مخصص ليوم الجمعة أو الأيام العادية
     if is_friday:
         caption = (
             f"سورة الكهف نورٌ ما بين الجمعتين 🤍✨\n"
