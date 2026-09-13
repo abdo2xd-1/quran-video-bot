@@ -2,7 +2,6 @@ name: 4x Daily Quran Auto-Publisher
 
 on:
   schedule:
-    # المواعيد الأربعة يومياً بتوقيت مصر
     - cron: '30 3 * * *'   # 6:30 صباحاً
     - cron: '30 11 * * *'  # 2:30 ظهراً
     - cron: '30 15 * * *'  # 6:30 مساءً
@@ -26,12 +25,8 @@ jobs:
       - name: Install System Dependencies & Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg imagemagick wget fonts-noto-core fonts-sil-scheherazade
+          sudo apt-get install -y ffmpeg imagemagick fonts-sil-scheherazade fonts-noto-core
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
-          
-          # تحميل خط الرسم العثماني بصيغة صحيحة ومباشرة
-          wget -q -O uthmanic_font.ttf "https://raw.githubusercontent.com/thetrueready/quran-bot/master/fonts/uthmanic_hafs.ttf"
-          
           pip install -r requirements.txt
 
       - name: Run Quran Pipeline
