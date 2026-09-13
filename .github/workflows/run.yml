@@ -1,43 +1,10 @@
-name: 4x Daily Quran Auto-Publisher
-
-on:
-  schedule:
-    - cron: '30 3 * * *'   # 6:30 صباحاً
-    - cron: '30 11 * * *'  # 2:30 ظهراً
-    - cron: '30 15 * * *'  # 6:30 مساءً
-    - cron: '30 19 * * *'  # 10:30 مساءً
-  workflow_dispatch:
-
-jobs:
-  build-and-publish:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install System Dependencies & Fonts
+- name: Install System Dependencies & Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg imagemagick wget fonts-freefont-ttf
+          sudo apt-get install -y ffmpeg imagemagick wget fonts-noto-core fonts-sil-scheherazade
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
           
-          # تحميل خط مصحف المدينة النبوية الأصلي
-          wget -O uthmanic_font.ttf "https://github.com/thetrueready/quran-bot/raw/master/fonts/uthmanic_hafs.ttf" || true
+          # تحميل خط الرسم العثماني بصيغة صحيحة ومباشرة
+          wget -q -O uthmanic_font.ttf "https://raw.githubusercontent.com/thetrueready/quran-bot/master/fonts/uthmanic_hafs.ttf"
           
           pip install -r requirements.txt
-
-      - name: Run Quran Pipeline
-        env:
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
-          BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python main.py
