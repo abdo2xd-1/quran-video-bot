@@ -22,11 +22,15 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies
+      - name: Install System Dependencies & Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg imagemagick fonts-freefont-ttf
+          sudo apt-get install -y ffmpeg imagemagick wget fonts-freefont-ttf
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+          
+          # تحميل خط مصحف المدينة النبوية الأصلي
+          wget -O uthmanic_font.ttf "https://github.com/thetrueready/quran-bot/raw/master/fonts/uthmanic_hafs.ttf" || true
+          
           pip install -r requirements.txt
 
       - name: Run Quran Pipeline
