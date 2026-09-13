@@ -7,7 +7,6 @@ import datetime
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-# حل مشكلة ANTIALIAS في MoviePy نهائياً مع إصدارات Pillow الحديثة
 if not hasattr(Image, 'ANTIALIAS'):
     try:
         Image.ANTIALIAS = Image.Resampling.LANCZOS
@@ -17,6 +16,7 @@ if not hasattr(Image, 'ANTIALIAS'):
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
+    concatenate_audioclips,
     ImageClip,
     CompositeVideoClip,
     ColorClip
@@ -52,44 +52,81 @@ def clean_quran_symbols(text):
     cleaned = re.sub(r'[\u06D6-\u06ED]', '', text)
     return cleaned.strip()
 
-def get_ayah_data():
-    print("Fetching Ayah data...")
+def download_audio_file(subfolder, surah_num, ayah_num, output_name):
+    audio_url = f"https://everyayah.com/data/{subfolder}/{surah_num}{ayah_num}.mp3"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    res = requests.get(audio_url, headers=headers)
+    if res.status_code == 200 and len(res.content) > 5000:
+        with open(output_name, "wb") as f:
+            f.write(res.content)
+        return True
+    return False
+
+def get_target_ayahs_data():
+    print("Fetching Ayahs to match ~30 seconds duration...")
     today = datetime.datetime.now().weekday()
     is_friday = (today == 4)
     reciter = random.choice(RECITERS)
-    
+
     if is_friday:
         surah_number = 18
-        ayah_in_surah = random.randint(1, 110)
-        url = f"https://api.alquran.cloud/v1/ayah/{surah_number}:{ayah_in_surah}"
+        start_ayah = random.randint(1, 105)
     else:
-        verse_number = random.randint(1, 6236)
-        url = f"https://api.alquran.cloud/v1/ayah/{verse_number}"
+        surah_number = random.randint(1, 114)
+        surah_meta = requests.get(f"https://api.alquran.cloud/v1/surah/{surah_number}").json()["data"]
+        total_ayahs = surah_meta["numberOfAyahs"]
+        start_ayah = random.randint(1, max(1, total_ayahs - 2))
 
-    res = requests.get(url).json()
-    data = res["data"]
+    # جلب الآيات متتالية حتى نصل للمدة المطلوبة (بين 20 إلى 35 ثانية)
+    collected_texts = []
+    audio_clips = []
+    current_ayah = start_ayah
+    surah_name = ""
+    total_duration = 0.0
 
-    verse_text = clean_quran_symbols(data["text"])
-    surah_name = data["surah"]["name"]
-    surah_num = str(data["surah"]["number"]).zfill(3)
-    ayah_num = str(data["numberInSurah"]).zfill(3)
+    while total_duration < 22.0:
+        url = f"https://api.alquran.cloud/v1/ayah/{surah_number}:{current_ayah}"
+        r = requests.get(url).json()
+        if r.get("code") != 200:
+            break
+            
+        data = r["data"]
+        surah_name = data["surah"]["name"]
+        total_ayahs_in_surah = data["surah"]["numberOfAyahs"]
 
-    audio_url = f"https://everyayah.com/data/{reciter['subfolder']}/{surah_num}{ayah_num}.mp3"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    response = requests.get(audio_url, headers=headers)
+        s_num_str = str(surah_number).zfill(3)
+        a_num_str = str(current_ayah).zfill(3)
+        temp_audio_name = f"temp_{current_ayah}.mp3"
 
-    if response.status_code == 200 and len(response.content) > 5000:
-        with open("audio.mp3", "wb") as f:
-            f.write(response.content)
-    else:
-        fallback_url = f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{data['number']}.mp3"
-        fallback_res = requests.get(fallback_url, headers=headers)
-        with open("audio.mp3", "wb") as f:
-            f.write(fallback_res.content)
-        reciter["name"] = "مشاري العفاسي"
+        success = download_audio_file(reciter["subfolder"], s_num_str, a_num_str, temp_audio_name)
+        if not success:
+            break
 
-    print(f"Ayah fetched: Surah {surah_name} ({ayah_num})")
-    return verse_text, surah_name, int(ayah_num), reciter["name"], is_friday
+        clip = AudioFileClip(temp_audio_name)
+        audio_clips.append(clip)
+        total_duration += clip.duration
+        collected_texts.append(clean_quran_symbols(data["text"]))
+
+        if current_ayah >= total_ayahs_in_surah:
+            break
+        current_ayah += 1
+
+    # دمج الملفات الصوتية في ملف واحد
+    final_audio = concatenate_audioclips(audio_clips)
+    final_audio.write_audiofile("final_audio.mp3", fps=44100)
+
+    # تنظيف الملفات المؤقتة
+    for c in audio_clips:
+        c.close()
+    for f_idx in range(start_ayah, current_ayah):
+        if os.path.exists(f"temp_{f_idx}.mp3"):
+            os.remove(f"temp_{f_idx}.mp3")
+
+    combined_text = " * ".join(collected_texts)
+    ayah_range = f"{start_ayah}" if (current_ayah - 1 == start_ayah) else f"{start_ayah}-{current_ayah - 1}"
+
+    print(f"Selected: Surah {surah_name} (Ayahs {ayah_range}) - Total audio length: {final_audio.duration:.1f}s")
+    return combined_text, surah_name, ayah_range, reciter["name"], is_friday
 
 def download_aesthetic_background():
     print("Downloading background footage from Pexels...")
@@ -105,15 +142,15 @@ def download_aesthetic_background():
 
     with open("bg.mp4", "wb") as f:
         f.write(requests.get(video_url).content)
-    print("Background downloaded successfully.")
+    print("Background downloaded.")
 
 def create_quran_text_image(text, width=1080, height=1920):
-    print("Generating verse typography image...")
+    print("Generating verse typography...")
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
     font_file = "Amiri-Regular.ttf" if os.path.exists("Amiri-Regular.ttf") else "Arial"
-    font = ImageFont.truetype(font_file, 64)
+    font = ImageFont.truetype(font_file, 56)
 
     display_text = f"﴿ {text} ﴾"
 
@@ -156,16 +193,21 @@ def create_quran_text_image(text, width=1080, height=1920):
         draw.multiline_text((x, y), final_text, font=font, fill=(255, 255, 255, 255), align="center")
 
     image.save("verse_overlay.png", "PNG")
-    print("Verse image saved.")
 
 def build_aesthetic_quran_video(verse_text):
-    print("Rendering video with MoviePy...")
-    audio_clip = AudioFileClip("audio.mp3")
-    duration = audio_clip.duration + 1.2
+    print("Compositing 30s video with MoviePy...")
+    audio_clip = AudioFileClip("final_audio.mp3")
+    duration = audio_clip.duration + 1.5
 
-    video_clip = VideoFileClip("bg.mp4").subclip(0, duration).resize((1080, 1920))
+    # تكرار فيديو الخلفية إذا كانت مدة التلاوة أطول من لقطة Pexels
+    raw_video = VideoFileClip("bg.mp4")
+    if raw_video.duration < duration:
+        n_loops = int(duration / raw_video.duration) + 1
+        video_clip = raw_video.loop(n_loops).subclip(0, duration).resize((1080, 1920))
+    else:
+        video_clip = raw_video.subclip(0, duration).resize((1080, 1920))
+
     video_clip = video_clip.set_audio(audio_clip)
-
     overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.42).set_duration(duration)
 
     create_quran_text_image(verse_text)
@@ -179,10 +221,10 @@ def build_aesthetic_quran_video(verse_text):
         audio_codec="aac",
         preset="fast"
     )
-    print("Video rendered successfully.")
+    print("Video export complete.")
 
 def upload_video_to_github_release():
-    print("Uploading video asset to GitHub Releases...")
+    print("Uploading to GitHub Releases...")
     tag = f"video-{int(time.time())}"
     release_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases"
     headers = {
@@ -210,8 +252,8 @@ def upload_video_to_github_release():
     asset_res = requests.post(upload_url, headers=upload_headers, data=file_data).json()
     return asset_res["browser_download_url"]
 
-def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name, is_friday):
-    print("Sending publish request to Buffer API...")
+def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, is_friday):
+    print("Submitting to Buffer API...")
     clean_surah = surah_name.replace(' ', '_')
     clean_reciter = reciter_name.replace(' ', '_')
 
@@ -224,7 +266,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name, is_
         )
     else:
         caption = (
-            f"سورة {surah_name} 🤍\n"
+            f"سورة {surah_name} 🤍 (الآيات {ayah_range})\n"
             f"القارئ: {reciter_name}\n\n"
             f"أرح مسمعك وقلبك بآيات الله 🌿\n\n"
             f"#قرآن #تلاوات_خاشعة #راحة_نفسية #سورة_{clean_surah} #{clean_reciter} #quran #fyp #explore"
@@ -274,12 +316,12 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name, is_
 
 if __name__ == "__main__":
     try:
-        v_text, s_name, a_num, r_name, is_fri = get_ayah_data()
+        v_text, s_name, a_range, r_name, is_fri = get_target_ayahs_data()
         download_aesthetic_background()
         build_aesthetic_quran_video(v_text)
         public_url = upload_video_to_github_release()
         print("Uploaded GitHub CDN URL:", public_url)
-        post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name, is_fri)
+        post_to_tiktok_via_buffer(public_url, s_name, a_range, r_name, is_fri)
         print("Pipeline finished successfully!")
     except Exception as e:
         print("CRITICAL ERROR ENCOUNTERED:", e)
