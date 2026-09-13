@@ -1,6 +1,8 @@
 import os
 import random
 import requests
+import cloudinary
+import cloudinary.uploader
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
@@ -9,9 +11,22 @@ from moviepy.editor import (
     ColorClip
 )
 
+# جلب المفاتيح من متغيرات البيئة السرية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
+
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+
+# إعداد الربط السحابي مع Cloudinary
+cloudinary.config(
+    cloud_name=CLOUDINARY_CLOUD_NAME,
+    api_key=CLOUDINARY_API_KEY,
+    api_secret=CLOUDINARY_API_SECRET,
+    secure=True
+)
 
 RECITERS = [
     {"subfolder": "Alafasy_128kbps", "name": "مشاري العفاسي"},
@@ -110,16 +125,17 @@ def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
         preset="fast"
     )
 
-def upload_video_temporarily():
-    url = "https://litterbox.catbox.moe/resources/internals/api.php"
-    data = {
-        "reqtype": "fileupload",
-        "time": "24h"
-    }
-    with open("final_reel.mp4", "rb") as f:
-        files = {"fileToUpload": f}
-        res = requests.post(url, data=data, files=files)
-        return res.text.strip()
+def upload_video_to_cloud():
+    # رفع الفيديو مباشرة لشبكة Cloudinary الرسمية المفتوحة لسيرفرات Buffer
+    res = cloudinary.uploader.upload_large(
+        "final_reel.mp4",
+        resource_type="video",
+        folder="quran_bot"
+    )
+    direct_url = res.get("secure_url")
+    if not direct_url or not direct_url.startswith("http"):
+        raise ValueError(f"فشل في استخراج الرابط من Cloudinary: {res}")
+    return direct_url
 
 def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
     caption = (
@@ -176,6 +192,6 @@ if __name__ == "__main__":
     v_text, s_name, a_num, r_name = get_random_verse_and_audio()
     download_dynamic_background()
     build_quran_video(v_text, s_name, a_num, r_name)
-    public_url = upload_video_temporarily()
-    print("Uploaded direct video URL:", public_url)
+    public_url = upload_video_to_cloud()
+    print("Uploaded Cloudinary CDN URL:", public_url)
     post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name)
