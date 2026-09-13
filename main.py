@@ -3,6 +3,8 @@ import time
 import random
 import datetime
 import requests
+import arabic_reshaper
+from bidi.algorithm import get_display
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
@@ -25,7 +27,6 @@ RECITERS = [
     {"subfolder": "Saood_ash-Shuraym_128kbps", "name": "سعود الشريم"}
 ]
 
-# كلمات بحث سينمائية هادئة تطابق ستايل abo.3aid
 AESTHETIC_QUERIES = [
     "cinematic calm sea sunset vertical",
     "misty green mountains slow motion vertical",
@@ -37,19 +38,16 @@ AESTHETIC_QUERIES = [
 ]
 
 def get_ayah_data():
-    # التحقق مما إذا كان اليوم هو يوم الجمعة (Friday = 4)
     today = datetime.datetime.now().weekday()
     is_friday = (today == 4)
     
     reciter = random.choice(RECITERS)
     
     if is_friday:
-        # اختيار آية عشوائية من سورة الكهف (سورة رقم 18)
         surah_number = 18
         ayah_in_surah = random.randint(1, 110)
         url = f"https://api.alquran.cloud/v1/ayah/{surah_number}:{ayah_in_surah}"
     else:
-        # اختيار آية عشوائية من القرآن الكريم
         verse_number = random.randint(1, 6236)
         url = f"https://api.alquran.cloud/v1/ayah/{verse_number}"
 
@@ -95,25 +93,21 @@ def build_aesthetic_quran_video(verse_text, ayah_num):
     audio_clip = AudioFileClip("audio.mp3")
     duration = audio_clip.duration + 1.2
 
-    # أبعاد تيك توك 1080x1920
     video_clip = VideoFileClip("bg.mp4").subclip(0, duration).resize((1080, 1920))
     video_clip = video_clip.set_audio(audio_clip)
 
-    # تعتيم سينمائي ناعم لإبراز النص
     overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.42).set_duration(duration)
 
-    # التأكد من صحة وجودة ملف الخط وتفادي أخطاء ImageMagick
-    font_choice = "uthmanic_font.ttf" if (os.path.exists("uthmanic_font.ttf") and os.path.getsize("uthmanic_font.ttf") > 10000) else "Scheherazade"
+    # إعادة تشبيك الحروف وتوجيه النص من اليمين لليسار
+    reshaped_text = arabic_reshaper.reshape(verse_text)
+    bidi_text = get_display(reshaped_text)
+    quran_styled_text = f"﴿ {bidi_text} ﴾"
 
-    # تنسيق الآية بالأقواس العثمانية
-    quran_styled_text = f"﴿ {verse_text} ﴾"
-
-    # الآية فقط في منتصف الشاشة بدون تشتيت
     txt_clip = TextClip(
         quran_styled_text,
-        fontsize=60,
+        fontsize=54,
         color='#FFFFFF',
-        font=font_choice,
+        font="Scheherazade",
         method='caption',
         size=(920, None),
         align='center'
