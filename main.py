@@ -7,6 +7,7 @@ import datetime
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
+# حل مشكلة ANTIALIAS في MoviePy نهائياً مع إصدارات Pillow الحديثة
 if not hasattr(Image, 'ANTIALIAS'):
     try:
         Image.ANTIALIAS = Image.Resampling.LANCZOS
@@ -21,8 +22,6 @@ from moviepy.editor import (
     CompositeVideoClip,
     ColorClip
 )
-
-print("Starting Quran Bot Pipeline...")
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
@@ -62,7 +61,47 @@ def download_audio_file(subfolder, surah_num, ayah_num, output_name):
         return True
     return False
 
+def get_custom_ayahs_data(surah_number, start_ayah, end_ayah, reciter_subfolder, reciter_name):
+    """جلب وتجميع آيات مخصصة بناءً على تحليل الذكاء الاصطناعي"""
+    collected_texts = []
+    audio_clips = []
+    surah_name = ""
+
+    for ayah_idx in range(start_ayah, end_ayah + 1):
+        url = f"https://api.alquran.cloud/v1/ayah/{surah_number}:{ayah_idx}"
+        r = requests.get(url).json().get("data")
+        if not r:
+            continue
+        surah_name = r["surah"]["name"]
+        
+        s_str = str(surah_number).zfill(3)
+        a_str = str(ayah_idx).zfill(3)
+        temp_name = f"custom_{ayah_idx}.mp3"
+
+        success = download_audio_file(reciter_subfolder, s_str, a_str, temp_name)
+        if success:
+            clip = AudioFileClip(temp_name)
+            audio_clips.append(clip)
+            collected_texts.append(clean_quran_symbols(r["text"]))
+
+    if not audio_clips:
+        raise ValueError("فشل تحميل المقاطع الصوتية للآيات المحددة.")
+
+    final_audio = concatenate_audioclips(audio_clips)
+    final_audio.write_audiofile("final_audio.mp3", fps=44100)
+
+    for c in audio_clips:
+        c.close()
+    for ayah_idx in range(start_ayah, end_ayah + 1):
+        if os.path.exists(f"custom_{ayah_idx}.mp3"):
+            os.remove(f"custom_{ayah_idx}.mp3")
+
+    combined_text = " * ".join(collected_texts)
+    ayah_range = f"{start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"{start_ayah}"
+    return combined_text, surah_name, ayah_range, reciter_name, False
+
 def get_target_ayahs_data():
+    """النظام العشوائي التلقائي المجدول لمدة ~30 ثانية"""
     print("Fetching Ayahs to match ~30 seconds duration...")
     today = datetime.datetime.now().weekday()
     is_friday = (today == 4)
@@ -77,7 +116,6 @@ def get_target_ayahs_data():
         total_ayahs = surah_meta["numberOfAyahs"]
         start_ayah = random.randint(1, max(1, total_ayahs - 2))
 
-    # جلب الآيات متتالية حتى نصل للمدة المطلوبة (بين 20 إلى 35 ثانية)
     collected_texts = []
     audio_clips = []
     current_ayah = start_ayah
@@ -111,11 +149,9 @@ def get_target_ayahs_data():
             break
         current_ayah += 1
 
-    # دمج الملفات الصوتية في ملف واحد
     final_audio = concatenate_audioclips(audio_clips)
     final_audio.write_audiofile("final_audio.mp3", fps=44100)
 
-    # تنظيف الملفات المؤقتة
     for c in audio_clips:
         c.close()
     for f_idx in range(start_ayah, current_ayah):
@@ -195,11 +231,10 @@ def create_quran_text_image(text, width=1080, height=1920):
     image.save("verse_overlay.png", "PNG")
 
 def build_aesthetic_quran_video(verse_text):
-    print("Compositing 30s video with MoviePy...")
+    print("Compositing video with MoviePy...")
     audio_clip = AudioFileClip("final_audio.mp3")
     duration = audio_clip.duration + 1.5
 
-    # تكرار فيديو الخلفية إذا كانت مدة التلاوة أطول من لقطة Pexels
     raw_video = VideoFileClip("bg.mp4")
     if raw_video.duration < duration:
         n_loops = int(duration / raw_video.duration) + 1
@@ -316,6 +351,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
 
 if __name__ == "__main__":
     try:
+        # التشغيل المجدول الافتراضي التلقائي (في حال لم يتم استدعاؤه عبر بوت تليجرام)
         v_text, s_name, a_range, r_name, is_fri = get_target_ayahs_data()
         download_aesthetic_background()
         build_aesthetic_quran_video(v_text)
