@@ -11,22 +11,13 @@ from moviepy.editor import (
     ColorClip
 )
 
-# جلب المفاتيح من متغيرات البيئة السرية
+# جلب المفاتيح من متغيرات البيئة
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
 
-CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
-CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
-CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
-
-# إعداد الربط السحابي مع Cloudinary
-cloudinary.config(
-    cloud_name=CLOUDINARY_CLOUD_NAME,
-    api_key=CLOUDINARY_API_KEY,
-    api_secret=CLOUDINARY_API_SECRET,
-    secure=True
-)
+# Cloudinary يقرأ متغير CLOUDINARY_URL تلقائياً
+cloudinary.config(secure=True)
 
 RECITERS = [
     {"subfolder": "Alafasy_128kbps", "name": "مشاري العفاسي"},
@@ -126,7 +117,6 @@ def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
     )
 
 def upload_video_to_cloud():
-    # رفع الفيديو مباشرة لشبكة Cloudinary الرسمية المفتوحة لسيرفرات Buffer
     res = cloudinary.uploader.upload_large(
         "final_reel.mp4",
         resource_type="video",
