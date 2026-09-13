@@ -1,8 +1,7 @@
 import os
+import time
 import random
 import requests
-import cloudinary
-import cloudinary.uploader
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
@@ -11,13 +10,12 @@ from moviepy.editor import (
     ColorClip
 )
 
-# جلب المفاتيح من متغيرات البيئة
+# جلب المفاتيح الأساسية
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 BUFFER_ACCESS_TOKEN = os.getenv("BUFFER_ACCESS_TOKEN")
 BUFFER_CHANNEL_ID = os.getenv("BUFFER_CHANNEL_ID")
-
-# Cloudinary يقرأ متغير CLOUDINARY_URL تلقائياً
-cloudinary.config(secure=True)
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 
 RECITERS = [
     {"subfolder": "Alafasy_128kbps", "name": "مشاري العفاسي"},
@@ -116,16 +114,37 @@ def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
         preset="fast"
     )
 
-def upload_video_to_cloud():
-    res = cloudinary.uploader.upload_large(
-        "final_reel.mp4",
-        resource_type="video",
-        folder="quran_bot"
-    )
-    direct_url = res.get("secure_url")
-    if not direct_url or not direct_url.startswith("http"):
-        raise ValueError(f"فشل في استخراج الرابط من Cloudinary: {res}")
-    return direct_url
+def upload_video_to_github_release():
+    # رفع الفيديو مباشرة إلى سيرفرات GitHub لإنشاء رابط CDN مباشر لا يُحظر أبداً
+    tag = f"video-{int(time.time())}"
+    release_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    # 1. إنشاء Release جديد
+    payload = {
+        "tag_name": tag,
+        "name": f"Quran Video {tag}",
+        "draft": False,
+        "prerelease": False
+    }
+    rel_res = requests.post(release_url, headers=headers, json=payload).json()
+    upload_url_template = rel_res["upload_url"]
+    upload_url = upload_url_template.split("{")[0] + "?name=final_reel.mp4"
+
+    # 2. رفع ملف الفيديو
+    with open("final_reel.mp4", "rb") as f:
+        file_data = f.read()
+
+    upload_headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Content-Type": "video/mp4"
+    }
+    asset_res = requests.post(upload_url, headers=upload_headers, data=file_data).json()
+    direct_download_url = asset_res["browser_download_url"]
+    return direct_download_url
 
 def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
     caption = (
@@ -182,6 +201,6 @@ if __name__ == "__main__":
     v_text, s_name, a_num, r_name = get_random_verse_and_audio()
     download_dynamic_background()
     build_quran_video(v_text, s_name, a_num, r_name)
-    public_url = upload_video_to_cloud()
-    print("Uploaded Cloudinary CDN URL:", public_url)
+    public_url = upload_video_to_github_release()
+    print("Uploaded GitHub CDN URL:", public_url)
     post_to_tiktok_via_buffer(public_url, s_name, a_num, r_name)
