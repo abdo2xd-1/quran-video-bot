@@ -5,10 +5,11 @@ import datetime
 import requests
 import arabic_reshaper
 from bidi.algorithm import get_display
+from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
-    TextClip,
+    ImageClip,
     CompositeVideoClip,
     ColorClip
 )
@@ -40,7 +41,6 @@ AESTHETIC_QUERIES = [
 def get_ayah_data():
     today = datetime.datetime.now().weekday()
     is_friday = (today == 4)
-    
     reciter = random.choice(RECITERS)
     
     if is_friday:
@@ -89,6 +89,58 @@ def download_aesthetic_background():
     with open("bg.mp4", "wb") as f:
         f.write(requests.get(video_url).content)
 
+def create_quran_text_image(text, width=1080, height=1920):
+    # رسم النص القرآني مباشرة بمكتبة Pillow لضمان سلامة الحروف والتشكيل
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    # مسار الخط المثبت في النظام
+    font_paths = [
+        "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSerif.ttf"
+    ]
+    font_path = next((p for p in font_paths if os.path.exists(p)), None)
+    
+    font = ImageFont.truetype(font_path, 58) if font_path else ImageFont.load_default()
+
+    # معالجة النص العربي
+    reshaped_text = arabic_reshaper.reshape(f"﴿ {text} ﴾")
+    bidi_text = get_display(reshaped_text)
+
+    # تقسيم الكلمات لأسطر متوازنة إذا كانت الآية طويلة
+    words = bidi_text.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        current_line.append(word)
+        # حساب العرض
+        test_line = " ".join(current_line)
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        if (bbox[2] - bbox[0]) > 900:
+            current_line.pop()
+            lines.append(" ".join(current_line))
+            current_line = [word]
+    if current_line:
+        lines.append(" ".join(current_line))
+
+    final_text = "\n".join(lines)
+
+    # حساب موقع النص في المنتصف تماماً
+    bbox = draw.multiline_textbbox((0, 0), final_text, font=font, align="center")
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    x = (width - text_width) / 2
+    y = (height - text_height) / 2
+
+    # رسم ظل خفيف أسود ثم النص الأبيض الناصع
+    draw.multiline_text((x+2, y+2), final_text, font=font, fill=(0, 0, 0, 200), align="center")
+    draw.multiline_text((x, y), final_text, font=font, fill=(255, 255, 255, 255), align="center")
+
+    image.save("verse_overlay.png", "PNG")
+
 def build_aesthetic_quran_video(verse_text, ayah_num):
     audio_clip = AudioFileClip("audio.mp3")
     duration = audio_clip.duration + 1.2
@@ -96,24 +148,14 @@ def build_aesthetic_quran_video(verse_text, ayah_num):
     video_clip = VideoFileClip("bg.mp4").subclip(0, duration).resize((1080, 1920))
     video_clip = video_clip.set_audio(audio_clip)
 
+    # تعتيم سينمائي هادئ
     overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.42).set_duration(duration)
 
-    # إعادة تشبيك الحروف وتوجيه النص من اليمين لليسار
-    reshaped_text = arabic_reshaper.reshape(verse_text)
-    bidi_text = get_display(reshaped_text)
-    quran_styled_text = f"﴿ {bidi_text} ﴾"
+    # توليد صورة النص القرآني وتركيبها
+    create_quran_text_image(verse_text)
+    txt_layer = ImageClip("verse_overlay.png").set_duration(duration)
 
-    txt_clip = TextClip(
-        quran_styled_text,
-        fontsize=54,
-        color='#FFFFFF',
-        font="Scheherazade",
-        method='caption',
-        size=(920, None),
-        align='center'
-    ).set_duration(duration).set_position(('center', 'center'))
-
-    final = CompositeVideoClip([video_clip, overlay, txt_clip])
+    final = CompositeVideoClip([video_clip, overlay, txt_layer])
     final.write_videofile(
         "final_reel.mp4",
         fps=30,
