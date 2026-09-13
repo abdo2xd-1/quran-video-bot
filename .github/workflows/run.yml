@@ -25,7 +25,11 @@ jobs:
       - name: Install System Dependencies & Arabic Engines
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libraqm0 libfribidi0 libharfbuzz0b fonts-amiri fonts-noto-core
+          sudo apt-get install -y ffmpeg libraqm0 libfribidi0 libharfbuzz0b wget
+          
+          # تحميل خط Amiri المعتمد مباشرة
+          wget -q -O Amiri-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf"
+          
           pip install -r requirements.txt
 
       - name: Run Quran Pipeline
