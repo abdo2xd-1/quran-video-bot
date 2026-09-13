@@ -111,14 +111,15 @@ def build_quran_video(verse_text, surah_name, ayah_num, reciter_name):
     )
 
 def upload_video_temporarily():
-    url = "https://tmpfiles.org/api/v1/upload"
+    url = "https://litterbox.catbox.moe/resources/internals/api.php"
+    data = {
+        "reqtype": "fileupload",
+        "time": "24h"
+    }
     with open("final_reel.mp4", "rb") as f:
-        files = {"file": f}
-        res = requests.post(url, files=files).json()
-    
-    raw_url = res["data"]["url"]
-    direct_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
-    return direct_url
+        files = {"fileToUpload": f}
+        res = requests.post(url, data=data, files=files)
+        return res.text.strip()
 
 def post_to_tiktok_via_buffer(video_url, surah_name, ayah_num, reciter_name):
     caption = (
