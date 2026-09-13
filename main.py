@@ -6,6 +6,14 @@ import random
 import datetime
 import requests
 from PIL import Image, ImageDraw, ImageFont
+
+# حل مشكلة ANTIALIAS في MoviePy نهائياً مع إصدارات Pillow الحديثة
+if not hasattr(Image, 'ANTIALIAS'):
+    try:
+        Image.ANTIALIAS = Image.Resampling.LANCZOS
+    except AttributeError:
+        pass
+
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
@@ -109,7 +117,6 @@ def create_quran_text_image(text, width=1080, height=1920):
 
     display_text = f"﴿ {text} ﴾"
 
-    # تقسيم الكلمات لأسطر
     words = display_text.split()
     lines = []
     current_line = []
