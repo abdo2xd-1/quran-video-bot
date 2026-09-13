@@ -1,0 +1,37 @@
+name: 24/7 Telegram Quran Bot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install System Dependencies & Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libraqm0 libfribidi0 libharfbuzz0b wget
+          wget -q -O Amiri-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf"
+          pip install -r requirements.txt
+
+      - name: Start Telegram Bot Listener
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
+          BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python bot.py
