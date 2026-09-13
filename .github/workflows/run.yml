@@ -2,7 +2,7 @@ name: 4x Daily Quran Auto-Publisher
 
 on:
   schedule:
-    # المواعيد الأربعة يومياً بتوقيت مصر (UTC + 3)
+    # المواعيد الأربعة يومياً بتوقيت مصر
     - cron: '30 3 * * *'   # 6:30 صباحاً
     - cron: '30 11 * * *'  # 2:30 ظهراً
     - cron: '30 15 * * *'  # 6:30 مساءً
@@ -33,7 +33,5 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
         run: python main.py
