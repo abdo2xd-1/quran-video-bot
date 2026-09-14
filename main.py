@@ -5,9 +5,34 @@ import random
 import requests
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
 
+# قائمة سور وآيات متنوعة للنشر التلقائي
+AUTO_CONTENT = [
+    {"surah": 1, "start": 1, "end": 7, "name": "الفاتحة"},
+    {"surah": 93, "start": 1, "end": 11, "name": "الضحى"},
+    {"surah": 94, "start": 1, "end": 8, "name": "الشرح"},
+    {"surah": 95, "start": 1, "end": 8, "name": "التين"},
+    {"surah": 97, "start": 1, "end": 5, "name": "القدر"},
+    {"surah": 103, "start": 1, "end": 3, "name": "العصر"},
+    {"surah": 108, "start": 1, "end": 3, "name": "الكوثر"},
+    {"surah": 112, "start": 1, "end": 4, "name": "الإخلاص"},
+    {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},
+    {"surah": 114, "start": 1, "end": 6, "name": "الناس"},
+    {"surah": 67, "start": 1, "end": 5, "name": "الملك"},
+    {"surah": 55, "start": 1, "end": 13, "name": "الرحمن"},
+    {"surah": 18, "start": 1, "end": 10, "name": "الكهف"},
+    {"surah": 2, "start": 255, "end": 255, "name": "آية الكرسي"}
+]
+
+RECITERS_POOL = [
+    ("ar.alafasy", "مشاري العفاسي"),
+    ("ar.abdulbasitmurattal", "عبد الباسط عبد الصمد"),
+    ("ar.minshawi", "محمد صديق المنشاوي"),
+    ("ar.mahermuaiqly", "ماهر المعيقلي"),
+    ("ar.ajamy", "أحمد العجمي")
+]
+
 def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafasy", reciter_name="العفاسي"):
-    print(f"جاري جلب الآيات للسورة {surah_num} من {start_ayah} إلى {end_ayah}...", flush=True)
-    
+    print(f"جلب آيات سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
     meta_res = requests.get(meta_url).json()
     surah_name = meta_res["data"]["name"]
@@ -22,8 +47,7 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
             verses_text.append(a_res["data"]["text"])
             audio_urls.append(a_res["data"]["audio"])
 
-    combined_audio_path = "recitation.mp3"
-    with open(combined_audio_path, "wb") as f_out:
+    with open("recitation.mp3", "wb") as f_out:
         for url in audio_urls:
             r = requests.get(url)
             f_out.write(r.content)
@@ -35,7 +59,7 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
     return full_text, surah_name, ayah_range, reciter_name, is_friday
 
 def download_aesthetic_background():
-    print("جاري اختيار وتنزيل خلفية سينمائية من Pexels...", flush=True)
+    print("تنزيل خلفية سينمائية من Pexels...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
     
@@ -60,7 +84,7 @@ def download_aesthetic_background():
     return "bg_video.mp4"
 
 def build_aesthetic_quran_video(quran_text):
-    print("جاري معالجة ومونتاج الفيديو بدقة 1080x1920...", flush=True)
+    print("مونتاج الفيديو بدقة 1080x1920...", flush=True)
     audio_clip = AudioFileClip("recitation.mp3")
     audio_duration = audio_clip.duration + 1.5
 
@@ -72,7 +96,6 @@ def build_aesthetic_quran_video(quran_text):
 
     video_clip = video_clip.resize((1080, 1920))
 
-    # اختيار المسار المعتمد للخط العربي المثبت
     font_name = "DejaVu-Sans"
     if os.path.exists("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"):
         font_name = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
@@ -98,11 +121,10 @@ def build_aesthetic_quran_video(quran_text):
         threads=4,
         preset="ultrafast"
     )
-    print("تم إخراج الفيديو بنجاح: final_reel.mp4", flush=True)
     return "final_reel.mp4"
 
 def upload_video_to_github_release():
-    print("جاري رفع الفيديو إلى GitHub Releases...", flush=True)
+    print("رفع الفيديو إلى GitHub Releases...", flush=True)
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     tag_name = f"video-{int(random.random()*1000000000)}"
@@ -132,19 +154,14 @@ def upload_video_to_github_release():
             data=f
         ).json()
 
-    public_download_url = up_res.get("browser_download_url")
-    print(f"الرابط المباشر للتحميل: {public_download_url}", flush=True)
-    return public_download_url
+    return up_res.get("browser_download_url")
 
 def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, is_friday=False):
-    """
-    نشر الفيديو دفعة واحدة على جميع الحسابات المربوطة في Buffer
-    """
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
 
     if not buffer_token or not channels_raw:
-        print("Buffer access token or Channel IDs not found. Skipping Buffer.", flush=True)
+        print("بيانات Buffer غير مكتملة، تم تخطي النشر.", flush=True)
         return
 
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
@@ -162,8 +179,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         "Content-Type": "application/x-www-form-urlencoded"
     }
 
-    print(f"جاري إرسال المنشور إلى {len(channel_ids)} قناة عبر Buffer...", flush=True)
-
     for ch_id in channel_ids:
         payload = {
             "profile_ids[]": ch_id,
@@ -171,7 +186,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             "media[video]": video_url,
             "now": "true"
         }
-
         try:
             res = requests.post(
                 "https://api.bufferapp.com/1/updates/create.json",
@@ -181,8 +195,37 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             )
             data = res.json()
             if data.get("success"):
-                print(f"✅ تم الإرسال بنجاح إلى القناة: {ch_id}", flush=True)
+                print(f"✅ تم النشر في القناة: {ch_id}", flush=True)
             else:
                 print(f"⚠️ تنبيه للقناة {ch_id}: {data.get('message')}", flush=True)
         except Exception as e:
-            print(f"❌ خطأ أثناء الإرسال إلى {ch_id}: {e}", flush=True)
+            print(f"❌ خطأ أثناء النشر للقناة {ch_id}: {e}", flush=True)
+
+def notify_telegram(message, video_url=None):
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("ADMIN_CHAT_ID", "").strip()
+    if not bot_token or not chat_id:
+        return
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10)
+    except Exception as e:
+        print(f"Telegram notify error: {e}", flush=True)
+
+if __name__ == "__main__":
+    print("=== بدء النشر التلقائي للساعة الحالية ===", flush=True)
+    item = random.choice(AUTO_CONTENT)
+    rec = random.choice(RECITERS_POOL)
+    
+    notify_telegram(f"⏰ بدء إنتاج فيديو الساعة التلقائي:\nسورة {item['name']} بصوت {rec[1]}...")
+    
+    v_text, s_name, a_range, r_name, is_fri = get_custom_ayahs_data(
+        item["surah"], item["start"], item["end"], rec[0], rec[1]
+    )
+    download_aesthetic_background()
+    build_aesthetic_quran_video(v_text)
+    pub_url = upload_video_to_github_release()
+    post_to_tiktok_via_buffer(pub_url, s_name, a_range, r_name, is_fri)
+    
+    notify_telegram(f"✅ اكتمل نشر فيديو الساعة بنجاح!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}")
+    print("=== اكتمل النشر التلقائي بنجاح ===", flush=True)
