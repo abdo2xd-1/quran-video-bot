@@ -2,16 +2,13 @@ import os
 import sys
 import json
 import random
-import textwrap
 import requests
 import arabic_reshaper
 from bidi.algorithm import get_display
-from moviepy.editor import (
-    VideoFileClip, AudioFileClip, TextClip, 
-    CompositeVideoClip, ColorClip
-)
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
 
-# باقة منتقاة من أوقع الآيات القرآنية القصيرة والمهدئة للقلوب المناسبة للمشاهد المليونية
+# آيات قصيرة شديدة التأثير والسكينة (نفس نمط الفيديوهات المليونية)
 VIRAL_AYAT = [
     {"surah": 13, "start": 28, "end": 28, "name": "الرعد"},     # ألا بذكر الله تطمئن القلوب
     {"surah": 94, "start": 5, "end": 6, "name": "الشرح"},       # فإن مع العسر يسرا
@@ -23,6 +20,7 @@ VIRAL_AYAT = [
     {"surah": 93, "start": 3, "end": 5, "name": "الضحى"},       # ما ودعك ربك وما قلى
     {"surah": 39, "start": 53, "end": 53, "name": "الزمر"},      # قل يا عبادي الذين أسرفوا على أنفسهم
     {"surah": 55, "start": 13, "end": 13, "name": "الرحمن"},    # فبأي آلاء ربكما تكذبان
+    {"surah": 14, "start": 34, "end": 34, "name": "إبراهيم"}     # وآتاكم من كل ما سألتموه
 ]
 
 RECITERS_POOL = [
@@ -32,22 +30,23 @@ RECITERS_POOL = [
     ("ar.minshawi", "محمد صديق المنشاوي")
 ]
 
-def format_arabic_text(text):
-    """ضبط اتجاه وتشكيل الخط العربي"""
-    reshaped = arabic_reshaper.reshape(text)
-    return get_display(reshaped)
+AMIRI_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Bold.ttf"
 
-def wrap_arabic_verses(text, words_per_line=4):
-    """توزيع كلمات الآية على أسطر متناسقة في منتصف الشاشة"""
-    words = text.split()
-    lines = []
-    for i in range(0, len(words), words_per_line):
-        chunk = " ".join(words[i:i + words_per_line])
-        lines.append(format_arabic_text(chunk))
-    return "\n".join(lines)
+def ensure_quran_font():
+    """تحميل خط المصحف الشريف Amiri Bold لضمان رسم الحروف والتشكيل بأعلى جودة"""
+    font_path = "Amiri-Bold.ttf"
+    if not os.path.exists(font_path):
+        print("تحميل خط القرآن الكريم (Amiri Bold)...", flush=True)
+        try:
+            r = requests.get(AMIRI_FONT_URL, timeout=15)
+            with open(font_path, "wb") as f:
+                f.write(r.content)
+        except Exception as e:
+            print(f"Font download fallback: {e}", flush=True)
+    return font_path if os.path.exists(font_path) else None
 
-def get_ayah_audio_and_text(surah_num, start_ayah, end_ayah, reciter_id, reciter_name):
-    print(f"جلب الآيات {surah_num}:{start_ayah}-{end_ayah}...", flush=True)
+def get_ayah_data(surah_num, start_ayah, end_ayah, reciter_id, reciter_name):
+    print(f"جلب الآيات سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
     meta_res = requests.get(meta_url, timeout=15).json()
     surah_name = meta_res.get("data", {}).get("name", f"سورة {surah_num}")
@@ -81,21 +80,19 @@ def get_ayah_audio_and_text(surah_num, start_ayah, end_ayah, reciter_id, reciter
     ayah_range = f"{start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"{start_ayah}"
     return full_arabic, surah_name, ayah_range, reciter_name
 
-def download_person_in_nature_video():
-    """جلب فيديو سينمائي لأشخاص يتأملون أو يمشون وسط الطبيعة والجبال"""
-    print("تنزيل خلفية لشخص في الطبيعة السينمائية...", flush=True)
+def download_majestic_nature_video():
+    """تنزيل مشاهد جبال وطبيعة ساحرة تشبه لقطات سويسرا والنرويج تماماً"""
+    print("تنزيل خلفية طبيعية سينمائية فائقة الجودة من Pexels...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
 
-    # استعلامات دقيقة لمحاكاة الفيديوهات الرائجة في الصور
     queries = [
-        "man walking mountains cinematic",
-        "person sitting mountains view",
-        "traveler looking at nature valley",
-        "person looking at mountains sunset",
-        "solitary person hiking foggy mountains",
-        "person walking nature moody road",
-        "man looking at mountain landscape"
+        "switzerland mountains drone vertical",
+        "alps landscape sunny green valley",
+        "scenic mountains clouds aerial",
+        "norway mountains drone vertical",
+        "breathtaking nature aerial mountains valley",
+        "green mountains landscape vertical 4k"
     ]
     query = random.choice(queries)
     url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=15"
@@ -105,6 +102,7 @@ def download_person_in_nature_video():
         videos = res.get("videos", [])
         if videos:
             chosen = random.choice(videos)
+            # اختيار أعلى جودة عمودية متاحة
             video_files = sorted(chosen["video_files"], key=lambda x: x.get("width", 0))
             best_link = video_files[-1]["link"]
             v_data = requests.get(best_link, timeout=35).content
@@ -116,8 +114,70 @@ def download_person_in_nature_video():
 
     return "bg_video.mp4"
 
+def generate_quran_text_overlay(arabic_text, target_width=1080, target_height=1920):
+    """توليد صورة شفافة بالآية القرآنية في المنتصف مع التشكيل والظل عبر Pillow"""
+    font_file = ensure_quran_font()
+
+    img = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # تقسيم الآية لأسطر مريحة للعين (3 إلى 4 كلمات في السطر)
+    words = arabic_text.split()
+    words_per_line = 3 if len(words) <= 6 else 4
+    lines = []
+    for i in range(0, len(words), words_per_line):
+        chunk = " ".join(words[i:i + words_per_line])
+        # تشبيك الحروف وتطبيق الاتجاه العربي لكل سطر
+        reshaped = arabic_reshaper.reshape(chunk)
+        lines.append(get_display(reshaped))
+
+    formatted_multiline = "\n".join(lines)
+
+    # حجم الخط حسب عدد الكلمات
+    if len(words) <= 5:
+        font_size = 72
+    elif len(words) <= 10:
+        font_size = 62
+    else:
+        font_size = 52
+
+    if font_file:
+        font = ImageFont.truetype(font_file, font_size)
+    else:
+        font = ImageFont.load_default()
+
+    center_x = target_width // 2
+    center_y = target_height // 2
+
+    # رسم ظل أسود خفيف ناعم لضمان القراءة بوضوح
+    for offset_x, offset_y in [(-3, -3), (3, -3), (-3, 3), (3, 3), (0, 4)]:
+        draw.multiline_text(
+            (center_x + offset_x, center_y + offset_y),
+            formatted_multiline,
+            font=font,
+            fill=(0, 0, 0, 220),
+            align="center",
+            anchor="mm",
+            spacing=25
+        )
+
+    # رسم النص الأبيض الناصع
+    draw.multiline_text(
+        (center_x, center_y),
+        formatted_multiline,
+        font=font,
+        fill=(255, 255, 255, 255),
+        align="center",
+        anchor="mm",
+        spacing=25
+    )
+
+    overlay_path = "quran_overlay.png"
+    img.save(overlay_path, "PNG")
+    return overlay_path
+
 def build_viral_aesthetic_reel(arabic_text):
-    print("مونتاج الفيديو بالنمط السينمائي الصافي...", flush=True)
+    print("مونتاج الفيديو بالنمط القرآني النقي 100%...", flush=True)
     audio_clip = AudioFileClip("recitation.mp3")
     audio_duration = audio_clip.duration + 1.0
 
@@ -129,43 +189,11 @@ def build_viral_aesthetic_reel(arabic_text):
 
     video_clip = video_clip.resize((1080, 1920))
 
-    # اختيار خط عربي أصيل للقرآن
-    font_path = "DejaVu-Sans"
-    if os.path.exists("/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"):
-        font_path = "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"
-    elif os.path.exists("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"):
-        font_path = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
+    # إنشاء طبقة النص القرآني كصورة شفافة مدمجة
+    overlay_img_path = generate_quran_text_overlay(arabic_text)
+    txt_clip = ImageClip(overlay_img_path).set_duration(audio_duration)
 
-    # تدرج خفيف وناعم جداً للحفاظ على جمال ووضوح ألوان الفيديو الطبيعي
-    dim_overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.25).set_duration(audio_duration)
-
-    # ضبط حجم الخط حسب طول الآية المختارة
-    word_count = len(arabic_text.split())
-    if word_count <= 6:
-        font_size = 54
-        w_per_line = 3
-    elif word_count <= 14:
-        font_size = 46
-        w_per_line = 4
-    else:
-        font_size = 38
-        w_per_line = 5
-
-    formatted_text = wrap_arabic_verses(arabic_text, words_per_line=w_per_line)
-
-    # النص في منتصف الشاشة مع حدود وظل أسود ناعم ليبرز بوضوح فائق كما في الصورة
-    quran_clip = TextClip(
-        formatted_text,
-        fontsize=font_size,
-        color="#FFFFFF",
-        stroke_color="#000000",
-        stroke_width=2,
-        font=font_path,
-        method="label",
-        align="center"
-    ).set_duration(audio_duration).set_position(("center", "center"))
-
-    final = CompositeVideoClip([video_clip, dim_overlay, quran_clip]).set_audio(audio_clip)
+    final = CompositeVideoClip([video_clip, txt_clip]).set_audio(audio_clip)
 
     final.write_videofile(
         "final_reel.mp4",
@@ -268,7 +296,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name):
             ]
         }
 
-        # متطلبات يوتيوب وإنستغرام المعتمدة
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             post_input["metadata"] = {
                 "youtube": {
@@ -317,21 +344,21 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء إنتاج فيديو القرآن السينمائي (Aesthetic Clean) ===", flush=True)
+    print("=== بدء إنتاج فيديو القرآن السينمائي النقي (Viral Style) ===", flush=True)
     item = random.choice(VIRAL_AYAT)
     rec = random.choice(RECITERS_POOL)
 
-    notify_telegram(f"🎬 جاري إنتاج ريلز سينمائي نقي:\nسورة {item['name']} ({item['start']}) بصوت {rec[1]}...")
+    notify_telegram(f"🎬 جاري إنتاج ريلز سينمائي:\nسورة {item['name']} ({item['start']}) بصوت {rec[1]}...")
 
-    ar_text, s_name, a_range, r_name = get_ayah_audio_and_text(
+    ar_text, s_name, a_range, r_name = get_ayah_data(
         item["surah"], item["start"], item["end"], rec[0], rec[1]
     )
 
-    download_person_in_nature_video()
+    download_majestic_nature_video()
     build_viral_aesthetic_reel(ar_text)
     pub_url = upload_video_to_github_release()
 
     post_to_tiktok_via_buffer(pub_url, s_name, a_range, r_name)
 
-    notify_telegram(f"✨ تم النشر بنجاح على جميع الحسابات!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}")
+    notify_telegram(f"✨ تم النشر بنجاح على جميع القنوات!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}")
     print("=== اكتمل النشر التلقائي بنجاح ===", flush=True)
