@@ -1,11 +1,9 @@
 name: Hourly Quran Auto-Publisher
 
 on:
-  schedule:
- schedule:
-    # النشر في مواعيد الذروة: 4:00 ص، 12:00 م، 5:00 م، 9:00 م (بتوقيت مصر)
-    - cron: '0 2,10,15,19 * * *'
   workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
 
 permissions:
   contents: write
@@ -13,11 +11,13 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -28,14 +28,19 @@ jobs:
           sudo apt-get install -y ffmpeg imagemagick fonts-noto-core fonts-sil-scheherazade
           sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"/<!-- <policy domain="path" rights="none" pattern="@\*" -->/' /etc/ImageMagick-6/policy.xml || true
           sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@\*"/' /etc/ImageMagick-6/policy.xml || true
+          sudo sed -i 's/<policy domain="resource" name="width" value=".*"\/>/<policy domain="resource" name="width" value="32KP"\/>/' /etc/ImageMagick-6/policy.xml || true
+          sudo sed -i 's/<policy domain="resource" name="height" value=".*"\/>/<policy domain="resource" name="height" value="32KP"\/>/' /etc/ImageMagick-6/policy.xml || true
+          sudo sed -i 's/<policy domain="resource" name="area" value=".*"\/>/<policy domain="resource" name="area" value="128MP"\/>/' /etc/ImageMagick-6/policy.xml || true
+          sudo sed -i 's/<policy domain="resource" name="memory" value=".*"\/>/<policy domain="resource" name="memory" value="2GiB"\/>/' /etc/ImageMagick-6/policy.xml || true
           pip install --upgrade pip
-          pip install "moviepy==1.0.3" "Pillow<10.0.0" requests arabic-reshaper python-bidi
+          pip install "moviepy==1.0.3" "Pillow<10.0.0" groq requests arabic-reshaper python-bidi
 
       - name: Run Quran Pipeline
         env:
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
