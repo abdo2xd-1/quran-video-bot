@@ -65,8 +65,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ تم النشر بنجاح على TikTok و Instagram و YouTube!")
 
     except Exception as e:
-        print(f"Error occurred: {e}", flush=True)
-        await update.message.reply_text(f"⚠️ حدث خطأ أثناء المعالجة:\n`{str(e)}`", parse_mode="Markdown")
+        err_msg = str(e).replace('`', '')
+        print(f"Error occurred: {err_msg}", flush=True)
+        try:
+            await update.message.reply_text(f"⚠️ حدث خطأ أثناء المعالجة:\n{err_msg[:300]}")
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_ID:
