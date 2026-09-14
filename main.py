@@ -5,7 +5,7 @@ import random
 import requests
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
 
-# قائمة سور وآيات متنوعة للنشر التلقائي كل ساعة
+# قائمة سور وآيات مضمونة ومناسبة لمدد الريلز والشورتس (أقل من دقيقة)
 AUTO_CONTENT = [
     {"surah": 1, "start": 1, "end": 7, "name": "الفاتحة"},
     {"surah": 93, "start": 1, "end": 11, "name": "الضحى"},
@@ -18,38 +18,53 @@ AUTO_CONTENT = [
     {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},
     {"surah": 114, "start": 1, "end": 6, "name": "الناس"},
     {"surah": 67, "start": 1, "end": 5, "name": "الملك"},
-    {"surah": 55, "start": 1, "end": 13, "name": "الرحمن"},
-    {"surah": 18, "start": 1, "end": 10, "name": "الكهف"},
-    {"surah": 2, "start": 255, "end": 255, "name": "آية الكرسي"}
+    {"surah": 55, "start": 1, "end": 8, "name": "الرحمن"}
 ]
 
+# القراء المعتمدون بالصوت الكامل لكل آية دون انقطاع
 RECITERS_POOL = [
     ("ar.alafasy", "مشاري العفاسي"),
     ("ar.abdulbasitmurattal", "عبد الباسط عبد الصمد"),
-    ("ar.minshawi", "محمد صديق المنشاوي"),
-    ("ar.mahermuaiqly", "ماهر المعيقلي"),
-    ("ar.ajamy", "أحمد العجمي")
+    ("ar.husary", "محمود خليل الحصري"),
+    ("ar.minshawi", "محمد صديق المنشاوي")
 ]
 
 def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafasy", reciter_name="العفاسي"):
     print(f"جلب آيات سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
+    
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
-    meta_res = requests.get(meta_url).json()
-    surah_name = meta_res["data"]["name"]
+    meta_res = requests.get(meta_url, timeout=15).json()
+    surah_name = meta_res.get("data", {}).get("name", f"سورة {surah_num}")
 
     verses_text = []
     audio_urls = []
 
     for a_num in range(start_ayah, end_ayah + 1):
         ayah_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/{reciter_id}"
-        a_res = requests.get(ayah_url).json()
-        if a_res.get("status") == "OK":
-            verses_text.append(a_res["data"]["text"])
-            audio_urls.append(a_res["data"]["audio"])
+        try:
+            a_res = requests.get(ayah_url, timeout=15).json()
+            if a_res.get("status") == "OK" and "data" in a_res:
+                data = a_res["data"]
+                verses_text.append(data.get("text", ""))
+                audio_link = data.get("audio")
+                
+                # إذا لم يكن الصوت متاحاً في هذا المعرف، جلب بديل مباشر من العفاسي
+                if not audio_link:
+                    fallback_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/ar.alafasy"
+                    fb_res = requests.get(fallback_url, timeout=15).json()
+                    audio_link = fb_res.get("data", {}).get("audio")
+                
+                if audio_link:
+                    audio_urls.append(audio_link)
+        except Exception as e:
+            print(f"Error fetching ayah {a_num}: {e}", flush=True)
+
+    if not audio_urls:
+        raise ValueError("فشل في جلب المقاطع الصوتية للآيات المحددة.")
 
     with open("recitation.mp3", "wb") as f_out:
         for url in audio_urls:
-            r = requests.get(url)
+            r = requests.get(url, timeout=20)
             f_out.write(r.content)
 
     full_text = " ۝ ".join(verses_text) + " ۝"
@@ -74,7 +89,7 @@ def download_aesthetic_background():
             chosen = random.choice(videos)
             video_files = sorted(chosen["video_files"], key=lambda x: x.get("width", 0))
             best_link = video_files[-1]["link"]
-            v_data = requests.get(best_link).content
+            v_data = requests.get(best_link, timeout=30).content
             with open("bg_video.mp4", "wb") as f:
                 f.write(v_data)
             return "bg_video.mp4"
@@ -96,14 +111,12 @@ def build_aesthetic_quran_video(quran_text):
 
     video_clip = video_clip.resize((1080, 1920))
 
-    # اختيار المسار المعتمد للخط العربي
     font_name = "DejaVu-Sans"
     if os.path.exists("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"):
         font_name = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
     elif os.path.exists("/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"):
         font_name = "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"
 
-    # تصغير حجم الخط وضبط أبعاد الصندوق لتفادي تجاوز حدود ImageMagick
     txt_clip = TextClip(
         quran_text,
         fontsize=36,
@@ -142,7 +155,7 @@ def upload_video_to_github_release():
         "draft": False,
         "prerelease": False
     }
-    res = requests.post(create_url, headers=headers, json=rel_data).json()
+    res = requests.post(create_url, headers=headers, json=rel_data, timeout=20).json()
     upload_url = res["upload_url"].split("{")[0]
 
     with open("final_reel.mp4", "rb") as f:
@@ -153,7 +166,8 @@ def upload_video_to_github_release():
         up_res = requests.post(
             f"{upload_url}?name=final_reel.mp4",
             headers=up_headers,
-            data=f
+            data=f,
+            timeout=60
         ).json()
 
     return up_res.get("browser_download_url")
