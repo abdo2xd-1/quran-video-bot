@@ -3,9 +3,10 @@ import sys
 import json
 import random
 import requests
+import arabic_reshaper
+from bidi.algorithm import get_display
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
 
-# قائمة سور وآيات مضمونة ومناسبة لمدد الريلز والشورتس (أقل من دقيقة)
 AUTO_CONTENT = [
     {"surah": 1, "start": 1, "end": 7, "name": "الفاتحة"},
     {"surah": 93, "start": 1, "end": 11, "name": "الضحى"},
@@ -21,7 +22,6 @@ AUTO_CONTENT = [
     {"surah": 55, "start": 1, "end": 8, "name": "الرحمن"}
 ]
 
-# القراء المعتمدون بالصوت الكامل لكل آية دون انقطاع
 RECITERS_POOL = [
     ("ar.alafasy", "مشاري العفاسي"),
     ("ar.abdulbasitmurattal", "عبد الباسط عبد الصمد"),
@@ -29,9 +29,13 @@ RECITERS_POOL = [
     ("ar.minshawi", "محمد صديق المنشاوي")
 ]
 
+def format_arabic_text(text):
+    """تشبيك الحروف العربية وضبط اتجاه اليمين لليسار"""
+    reshaped = arabic_reshaper.reshape(text)
+    return get_display(reshaped)
+
 def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafasy", reciter_name="العفاسي"):
     print(f"جلب آيات سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
-    
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
     meta_res = requests.get(meta_url, timeout=15).json()
     surah_name = meta_res.get("data", {}).get("name", f"سورة {surah_num}")
@@ -47,13 +51,10 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
                 data = a_res["data"]
                 verses_text.append(data.get("text", ""))
                 audio_link = data.get("audio")
-                
-                # إذا لم يكن الصوت متاحاً في هذا المعرف، جلب بديل مباشر من العفاسي
                 if not audio_link:
                     fallback_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/ar.alafasy"
                     fb_res = requests.get(fallback_url, timeout=15).json()
                     audio_link = fb_res.get("data", {}).get("audio")
-                
                 if audio_link:
                     audio_urls.append(audio_link)
         except Exception as e:
@@ -117,9 +118,11 @@ def build_aesthetic_quran_video(quran_text):
     elif os.path.exists("/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"):
         font_name = "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"
 
+    proper_quran_text = format_arabic_text(quran_text)
+
     txt_clip = TextClip(
-        quran_text,
-        fontsize=36,
+        proper_quran_text,
+        fontsize=38,
         color="white",
         font=font_name,
         method="caption",
@@ -191,17 +194,17 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     )
 
     headers = {
-        "Authorization": f"Bearer {buffer_token}",
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Authorization": f"Bearer {buffer_token}"
     }
 
     for ch_id in channel_ids:
-        payload = {
-            "profile_ids[]": ch_id,
-            "text": caption,
-            "media[video]": video_url,
-            "now": "true"
-        }
+        payload = [
+            ("profile_ids[]", ch_id),
+            ("text", caption),
+            ("now", "true"),
+            ("media[video]", video_url),
+            ("media[link]", video_url)
+        ]
         try:
             res = requests.post(
                 "https://api.bufferapp.com/1/updates/create.json",
@@ -209,11 +212,12 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
                 data=payload,
                 timeout=30
             )
-            data = res.json()
-            if data.get("success"):
-                print(f"✅ تم النشر في القناة: {ch_id}", flush=True)
+            res_data = res.json()
+            if res_data.get("success"):
+                print(f"✅ تم النشر بنجاح على القناة: {ch_id}", flush=True)
             else:
-                print(f"⚠️ تنبيه للقناة {ch_id}: {data.get('message')}", flush=True)
+                err_msg = res_data.get("message") or res_data.get("error") or str(res_data)
+                print(f"⚠️ تفاصيل رد القناة {ch_id}: {err_msg}", flush=True)
         except Exception as e:
             print(f"❌ خطأ أثناء النشر للقناة {ch_id}: {e}", flush=True)
 
