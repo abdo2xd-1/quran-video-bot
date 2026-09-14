@@ -6,12 +6,17 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filte
 from ai_parser import parse_user_request
 import main as pipeline
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "").strip()
+# استخراج المتغيرات وتنظيفها
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip().replace("\r", "").replace("\n", "").replace(" ", "")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "").strip().replace("\r", "").replace("\n", "").replace(" ", "")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != str(ADMIN_CHAT_ID):
-        await update.message.reply_text("عذراً، هذا البوت خاص.")
+    sender_id = str(update.effective_chat.id).strip()
+    print(f"رسالة واردة من ID: {sender_id} | المحتوى: {update.message.text}", flush=True)
+
+    if sender_id != ADMIN_CHAT_ID:
+        print(f"تم رفض الطلب: المعرف {sender_id} ليس المسؤول.", flush=True)
+        await update.message.reply_text("عذراً، هذا البوت خاص بالمسؤول فقط.")
         return
 
     user_text = update.message.text
@@ -31,7 +36,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📖 سورة: {surah_name}\n"
             f"🔢 الآيات: من {start_ayah} إلى {end_ayah}\n"
             f"🎙 القارئ: {reciter_name}\n\n"
-            f"جاري تحميل التلاوة ومونتاج الفيديو السينمائي... 🎬"
+            f"جاري تحميل التلاوة وتوليد الفيديو السينمائي... 🎬"
         )
 
         v_text, s_name, a_range, r_name, is_fri = pipeline.get_custom_ayahs_data(
@@ -41,25 +46,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pipeline.download_aesthetic_background()
         pipeline.build_aesthetic_quran_video(v_text)
 
-        await status_msg.edit_text("تم مونتاج الفيديو! جاري رفعه ونشره إلى حسابك... 🚀")
+        await status_msg.edit_text("تم مونتاج الفيديو! جاري رفعه ونشره إلى حساباتك... 🚀")
 
         public_url = pipeline.upload_video_to_github_release()
+
+        # إرسال الفيديو مباشرة داخل تليجرام
+        if os.path.exists("final_reel.mp4"):
+            try:
+                await update.message.reply_text("جاري إرسال نسخة الفيديو لك هنا... 📥")
+                with open("final_reel.mp4", "rb") as video_file:
+                    await context.bot.send_video(
+                        chat_id=sender_id,
+                        video=video_file,
+                        caption=f"🎬 سورة {surah_name} ({start_ayah}-{end_ayah})\n🎙 بصوت: {reciter_name}\n\n🔗 رابط السيرفر:\n{public_url}"
+                    )
+            except Exception as vid_err:
+                print(f"Video send error: {vid_err}", flush=True)
+
+        # النشر إلى Buffer لجميع المنصات
         pipeline.post_to_tiktok_via_buffer(public_url, s_name, a_range, r_name, is_fri)
 
         await update.message.reply_text(
-            f"تم النشر بنجاح على حسابك! ✨\n\n🔗 رابط معاينة الفيديو:\n{public_url}"
+            f"✅ تم الانتهاء بنجاح!\nتم إرسال الفيديو لجميع المنصات (TikTok / YouTube / Instagram) عبر Buffer."
         )
 
     except Exception as e:
-        print("Error:", e)
-        await update.message.reply_text(f"⚠️ خطأ أثناء المعالجة:\n`{str(e)}`", parse_mode="Markdown")
+        print(f"Error during execution: {e}", flush=True)
+        await update.message.reply_text(f"⚠️ حدث خطأ أثناء المعالجة:\n`{str(e)}`", parse_mode="Markdown")
 
 if __name__ == "__main__":
     if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_ID:
-        print("Missing variables!")
+        print("Missing TELEGRAM_BOT_TOKEN or ADMIN_CHAT_ID!", flush=True)
         sys.exit(1)
 
-    print("بوت التليجرام يعمل الآن...")
+    print("بوت التليجرام يعمل الآن وبانتظار أوامرك...", flush=True)
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
