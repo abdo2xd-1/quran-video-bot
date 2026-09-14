@@ -2,7 +2,9 @@ name: Hourly Quran Auto-Publisher
 
 on:
   schedule:
-    - cron: '0 * * * *'
+ schedule:
+    # النشر في مواعيد الذروة: 4:00 ص، 12:00 م، 5:00 م، 9:00 م (بتوقيت مصر)
+    - cron: '0 2,10,15,19 * * *'
   workflow_dispatch:
 
 permissions:
