@@ -1,42 +1,39 @@
-name: 4x Daily Quran Auto-Publisher
+name: Hourly Quran Auto-Publisher
 
 on:
   schedule:
-    - cron: '30 3 * * *'   # 6:30 صباحاً
-    - cron: '30 11 * * *'  # 2:30 ظهراً
-    - cron: '30 15 * * *'  # 6:30 مساءً
-    - cron: '30 19 * * *'  # 10:30 مساءً
+    # يعمل في الدقيقة 0 من كل ساعة (24 مرة يومياً)
+    - cron: '0 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies & Arabic Engines
+      - name: Install System Dependencies & Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libraqm0 libfribidi0 libharfbuzz0b wget
-          
-          # تحميل خط Amiri المعتمد مباشرة
-          wget -q -O Amiri-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf"
-          
-          pip install -r requirements.txt
+          sudo apt-get install -y ffmpeg imagemagick fonts-noto-core fonts-sil-scheherazade
+          pip install --upgrade pip
+          pip install "moviepy==1.0.3" "Pillow<10.0.0" requests
 
       - name: Run Quran Pipeline
         env:
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python main.py
+        run: python -u main.py
