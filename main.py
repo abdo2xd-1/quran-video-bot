@@ -5,7 +5,7 @@ import random
 import requests
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
 
-# قائمة سور وآيات متنوعة للنشر التلقائي
+# قائمة سور وآيات متنوعة للنشر التلقائي كل ساعة
 AUTO_CONTENT = [
     {"surah": 1, "start": 1, "end": 7, "name": "الفاتحة"},
     {"surah": 93, "start": 1, "end": 11, "name": "الضحى"},
@@ -96,19 +96,21 @@ def build_aesthetic_quran_video(quran_text):
 
     video_clip = video_clip.resize((1080, 1920))
 
+    # اختيار المسار المعتمد للخط العربي
     font_name = "DejaVu-Sans"
     if os.path.exists("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"):
         font_name = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
     elif os.path.exists("/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"):
         font_name = "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"
 
+    # تصغير حجم الخط وضبط أبعاد الصندوق لتفادي تجاوز حدود ImageMagick
     txt_clip = TextClip(
         quran_text,
-        fontsize=48,
+        fontsize=36,
         color="white",
         font=font_name,
         method="caption",
-        size=(880, None),
+        size=(880, 1400),
         align="center"
     ).set_duration(audio_duration).set_position(("center", "center"))
 
@@ -201,7 +203,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         except Exception as e:
             print(f"❌ خطأ أثناء النشر للقناة {ch_id}: {e}", flush=True)
 
-def notify_telegram(message, video_url=None):
+def notify_telegram(message):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("ADMIN_CHAT_ID", "").strip()
     if not bot_token or not chat_id:
