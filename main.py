@@ -120,13 +120,24 @@ def build_aesthetic_quran_video(quran_text):
 
     proper_quran_text = format_arabic_text(quran_text)
 
+    # حساب حجم الخط تلقائياً حسب طول النص لتفادي تجاوز حدود ImageMagick نهائياً
+    text_length = len(proper_quran_text)
+    if text_length > 600:
+        calculated_fontsize = 26
+    elif text_length > 400:
+        calculated_fontsize = 30
+    elif text_length > 200:
+        calculated_fontsize = 34
+    else:
+        calculated_fontsize = 40
+
     txt_clip = TextClip(
         proper_quran_text,
-        fontsize=38,
+        fontsize=calculated_fontsize,
         color="white",
         font=font_name,
         method="caption",
-        size=(880, 1400),
+        size=(860, 1400),
         align="center"
     ).set_duration(audio_duration).set_position(("center", "center"))
 
@@ -214,7 +225,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     """
 
     for ch_id in channel_ids:
-        # استخدام AUTOMATIC المتوافقة مع نوع Enum الإلزامي في GraphQL
         variables = {
             "input": {
                 "channelId": ch_id,
