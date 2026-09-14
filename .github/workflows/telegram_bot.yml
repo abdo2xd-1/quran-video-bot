@@ -20,7 +20,7 @@ jobs:
       - name: Install System Dependencies & Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-amiri imagemagick
+          sudo apt-get install -y ffmpeg imagemagick fonts-noto-core fonts-sil-scheherazade
           pip install --upgrade pip
           pip install python-telegram-bot groq requests moviepy pillow
 
