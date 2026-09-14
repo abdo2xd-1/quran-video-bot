@@ -120,7 +120,7 @@ def build_aesthetic_quran_video(quran_text):
 
     proper_quran_text = format_arabic_text(quran_text)
 
-    # حساب حجم الخط ديناميكياً لتفادي أي قيود لأبعاد الصورة
+    # ضبط حجم الخط آلياً لتفادي أي مشاكل في الارتفاع
     text_length = len(proper_quran_text)
     if text_length > 600:
         calculated_fontsize = 26
@@ -187,6 +187,21 @@ def upload_video_to_github_release():
 
     return up_res.get("browser_download_url")
 
+def get_channel_service(ch_id, headers, graphql_url):
+    """معرفة نوع المنصة (YouTube, Instagram, TikTok) لكل قناة تلقائياً"""
+    query = """
+    query GetChannel($input: ChannelInput!) {
+      channel(input: $input) {
+        service
+      }
+    }
+    """
+    try:
+        r = requests.post(graphql_url, headers=headers, json={"query": query, "variables": {"input": {"id": ch_id}}}, timeout=10)
+        return r.json().get("data", {}).get("channel", {}).get("service", "").lower()
+    except Exception:
+        return ""
+
 def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, is_friday=False):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
@@ -205,13 +220,14 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         f"#{reciter_name.replace(' ', '_')} #quran #fyp #explore #reels #shorts"
     )
 
+    video_title = f"سورة {surah_name} ({ayah_range}) | تلاوة خاشعة بصوت {reciter_name}"
+
     graphql_url = "https://api.buffer.com"
     headers = {
         "Authorization": f"Bearer {buffer_token}",
         "Content-Type": "application/json"
     }
 
-    # الاستعلام المعتمد رسمياً في توثيق Buffer
     mutation = """
     mutation CreatePost($input: CreatePostInput!) {
       createPost(input: $input) {
@@ -229,34 +245,67 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     """
 
     for ch_id in channel_ids:
-        # assets عبارة عن قائمة وبداخلها كائن واحد بمفتاح video مفرد
-        variables = {
-            "input": {
-                "channelId": ch_id,
-                "text": caption,
-                "mode": "shareNow",
-                "schedulingType": "automatic",
-                "assets": [
-                    {
-                        "video": {
-                            "url": video_url
-                        }
+        # فحص نوع المنصة
+        service = get_channel_service(ch_id, headers, graphql_url)
+
+        post_input = {
+            "channelId": ch_id,
+            "text": caption,
+            "mode": "shareNow",
+            "schedulingType": "automatic",
+            "assets": [
+                {
+                    "video": {
+                        "url": video_url
                     }
-                ]
-            }
+                }
+            ]
         }
+
+        # إضافة البيانات الخاصة بكل منصة لضمان القبول الفوري
+        if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
+            post_input["metadata"] = {
+                "youtube": {
+                    "title": video_title[:100],
+                    "categoryId": "27"  # التعليم والقرآن
+                }
+            }
+        elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
+            post_input["metadata"] = {
+                "instagram": {
+                    "type": "reel"  # نشر كـ Reel
+                }
+            }
+
         try:
             res = requests.post(
                 graphql_url,
                 headers=headers,
-                json={"query": mutation, "variables": variables},
+                json={"query": mutation, "variables": {"input": post_input}},
                 timeout=30
             )
             data = res.json()
+            err_msg = ""
             if "errors" in data and data["errors"]:
-                print(f"⚠️ تفاصيل رد القناة {ch_id}: {data['errors'][0].get('message', data['errors'])}", flush=True)
+                err_msg = data['errors'][0].get('message', str(data['errors']))
             elif "data" in data and data.get("data", {}).get("createPost", {}).get("message"):
-                print(f"⚠️ تنبيه للقناة {ch_id}: {data['data']['createPost']['message']}", flush=True)
+                err_msg = data['data']['createPost']['message']
+
+            # معالجة تلقائية ذكية إذا طلبت المنصة بيانات إضافية
+            if "YouTube" in err_msg and "metadata" not in post_input:
+                post_input["metadata"] = {"youtube": {"title": video_title[:100], "categoryId": "27"}}
+                res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
+                data = res.json()
+                err_msg = data.get("data", {}).get("createPost", {}).get("message", "")
+
+            elif "Instagram" in err_msg and "metadata" not in post_input:
+                post_input["metadata"] = {"instagram": {"type": "reel"}}
+                res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
+                data = res.json()
+                err_msg = data.get("data", {}).get("createPost", {}).get("message", "")
+
+            if err_msg:
+                print(f"⚠️ تفاصيل رد القناة {ch_id}: {err_msg}", flush=True)
             else:
                 print(f"✅ تم النشر بنجاح على القناة: {ch_id}", flush=True)
         except Exception as e:
