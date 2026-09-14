@@ -225,17 +225,15 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     """
 
     for ch_id in channel_ids:
-        # استخدام قيمة "automatic" بالحروف الصغيرة المتوافقة مع مخطط Buffer
+        # بنية attachments المعتمدة في Buffer GraphQL لملفات الفيديو
         variables = {
             "input": {
                 "channelId": ch_id,
                 "text": caption,
                 "mode": "shareNow",
                 "schedulingType": "automatic",
-                "media": {
-                    "video": {
-                        "url": video_url
-                    }
+                "attachments": {
+                    "videos": [video_url]
                 }
             }
         }
