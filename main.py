@@ -120,7 +120,7 @@ def build_aesthetic_quran_video(quran_text):
 
     proper_quran_text = format_arabic_text(quran_text)
 
-    # ضبط حجم الخط آلياً لتفادي أي مشاكل في الارتفاع
+    # ضبط حجم الخط آلياً لتفادي أي مشاكل في الأبعاد
     text_length = len(proper_quran_text)
     if text_length > 600:
         calculated_fontsize = 26
@@ -188,7 +188,6 @@ def upload_video_to_github_release():
     return up_res.get("browser_download_url")
 
 def get_channel_service(ch_id, headers, graphql_url):
-    """معرفة نوع المنصة (YouTube, Instagram, TikTok) لكل قناة تلقائياً"""
     query = """
     query GetChannel($input: ChannelInput!) {
       channel(input: $input) {
@@ -245,7 +244,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     """
 
     for ch_id in channel_ids:
-        # فحص نوع المنصة
         service = get_channel_service(ch_id, headers, graphql_url)
 
         post_input = {
@@ -262,18 +260,19 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             ]
         }
 
-        # إضافة البيانات الخاصة بكل منصة لضمان القبول الفوري
+        # إعدادات يوتيوب وإنستغرام الكاملة
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             post_input["metadata"] = {
                 "youtube": {
                     "title": video_title[:100],
-                    "categoryId": "27"  # التعليم والقرآن
+                    "categoryId": "27"
                 }
             }
         elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
             post_input["metadata"] = {
                 "instagram": {
-                    "type": "reel"  # نشر كـ Reel
+                    "type": "reel",
+                    "shouldShareToFeed": True
                 }
             }
 
@@ -291,15 +290,8 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             elif "data" in data and data.get("data", {}).get("createPost", {}).get("message"):
                 err_msg = data['data']['createPost']['message']
 
-            # معالجة تلقائية ذكية إذا طلبت المنصة بيانات إضافية
-            if "YouTube" in err_msg and "metadata" not in post_input:
-                post_input["metadata"] = {"youtube": {"title": video_title[:100], "categoryId": "27"}}
-                res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
-                data = res.json()
-                err_msg = data.get("data", {}).get("createPost", {}).get("message", "")
-
-            elif "Instagram" in err_msg and "metadata" not in post_input:
-                post_input["metadata"] = {"instagram": {"type": "reel"}}
+            if "shouldShareToFeed" in err_msg and "metadata" in post_input and "instagram" in post_input["metadata"]:
+                post_input["metadata"]["instagram"]["shouldShareToFeed"] = True
                 res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
                 data = res.json()
                 err_msg = data.get("data", {}).get("createPost", {}).get("message", "")
