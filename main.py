@@ -120,6 +120,7 @@ def build_aesthetic_quran_video(quran_text):
 
     proper_quran_text = format_arabic_text(quran_text)
 
+    # حساب حجم الخط ديناميكياً لتفادي أي قيود لأبعاد الصورة
     text_length = len(proper_quran_text)
     if text_length > 600:
         calculated_fontsize = 26
@@ -210,6 +211,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         "Content-Type": "application/json"
     }
 
+    # الاستعلام المعتمد رسمياً في توثيق Buffer
     mutation = """
     mutation CreatePost($input: CreatePostInput!) {
       createPost(input: $input) {
@@ -219,25 +221,28 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             status
           }
         }
+        ... on MutationError {
+          message
+        }
       }
     }
     """
 
     for ch_id in channel_ids:
-        # التنسيق الدقيق لمصفوفة assets.videos في GraphQL
+        # assets عبارة عن قائمة وبداخلها كائن واحد بمفتاح video مفرد
         variables = {
             "input": {
                 "channelId": ch_id,
                 "text": caption,
                 "mode": "shareNow",
                 "schedulingType": "automatic",
-                "assets": {
-                    "videos": [
-                        {
+                "assets": [
+                    {
+                        "video": {
                             "url": video_url
                         }
-                    ]
-                }
+                    }
+                ]
             }
         }
         try:
@@ -250,6 +255,8 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             data = res.json()
             if "errors" in data and data["errors"]:
                 print(f"⚠️ تفاصيل رد القناة {ch_id}: {data['errors'][0].get('message', data['errors'])}", flush=True)
+            elif "data" in data and data.get("data", {}).get("createPost", {}).get("message"):
+                print(f"⚠️ تنبيه للقناة {ch_id}: {data['data']['createPost']['message']}", flush=True)
             else:
                 print(f"✅ تم النشر بنجاح على القناة: {ch_id}", flush=True)
         except Exception as e:
