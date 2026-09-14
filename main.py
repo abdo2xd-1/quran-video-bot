@@ -3,6 +3,7 @@ import sys
 import json
 import random
 import datetime
+import textwrap
 import requests
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -22,8 +23,8 @@ AUTO_CONTENT = [
     {"surah": 112, "start": 1, "end": 4, "name": "الإخلاص"},
     {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},
     {"surah": 114, "start": 1, "end": 6, "name": "الناس"},
-    {"surah": 67, "start": 1, "end": 5, "name": "الملك"},
-    {"surah": 55, "start": 1, "end": 8, "name": "الرحمن"}
+    {"surah": 67, "start": 1, "end": 2, "name": "الملك"},
+    {"surah": 55, "start": 1, "end": 4, "name": "الرحمن"}
 ]
 
 RECITERS_POOL = [
@@ -34,21 +35,31 @@ RECITERS_POOL = [
 ]
 
 def format_arabic_text(text):
+    """ضبط اتجاه الكتابة وتشكيل الحروف العربية"""
     reshaped = arabic_reshaper.reshape(text)
     return get_display(reshaped)
 
+def wrap_arabic_text(text, words_per_line=5):
+    """تقسيم النص العربي إلى أسطر متوازنة لمنع خطأ أبعاد ImageMagick نهائياً"""
+    words = text.split()
+    lines = []
+    for i in range(0, len(words), words_per_line):
+        chunk = " ".join(words[i:i + words_per_line])
+        lines.append(format_arabic_text(chunk))
+    return "\n".join(lines)
+
 def select_contextual_surah():
-    """اختيار السورة بذكاء حسب اليوم والوقت (الكهف يوم الجمعة، الملك بالليل)"""
-    now = datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # توقيت القاهرة
+    """اختيار السورة الذكي حسب التوقيت (الكهف يوم الجمعة، الملك بالليل)"""
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
     is_friday = (now.weekday() == 4)
-    is_night = (now.hour >= 21 or now.hour <= 4)
+    is_night = (now.hour >= 20 or now.hour <= 4)
 
     if is_friday and 6 <= now.hour <= 17:
-        print("🕌 توقيت الجمعة: اختيار سورة الكهف...", flush=True)
-        return {"surah": 18, "start": 1, "end": 4, "name": "الكهف"}, True
+        print("🕌 توقيت الجمعة: اختيار سورة الكهف (1-3)...", flush=True)
+        return {"surah": 18, "start": 1, "end": 3, "name": "الكهف"}, True
     elif is_night:
-        print("🌙 توقيت المساء: اختيار سورة الملك...", flush=True)
-        return {"surah": 67, "start": 1, "end": 5, "name": "الملك"}, False
+        print("🌙 توقيت المساء: اختيار سورة الملك (1-2)...", flush=True)
+        return {"surah": 67, "start": 1, "end": 2, "name": "الملك"}, False
     else:
         return random.choice(AUTO_CONTENT), False
 
@@ -63,16 +74,14 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
     audio_urls = []
 
     for a_num in range(start_ayah, end_ayah + 1):
-        # الآية بالصوت العربي
         ayah_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/{reciter_id}"
-        # الترجمة الإنجليزية
         eng_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/en.sahih"
 
         try:
             a_res = requests.get(ayah_url, timeout=15).json()
             if a_res.get("status") == "OK" and "data" in a_res:
                 data = a_res["data"]
-                verses_arabic.append(data.get("text", ""))
+                verses_arabic.append(data.get("text", "").strip())
                 audio_link = data.get("audio")
                 if not audio_link:
                     fallback_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/ar.alafasy"
@@ -83,7 +92,7 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
 
             eng_res = requests.get(eng_url, timeout=15).json()
             if eng_res.get("status") == "OK" and "data" in eng_res:
-                verses_english.append(eng_res["data"].get("text", ""))
+                verses_english.append(eng_res["data"].get("text", "").strip())
         except Exception as e:
             print(f"Error fetching ayah {a_num}: {e}", flush=True)
 
@@ -147,45 +156,50 @@ def build_aesthetic_quran_video(arabic_text, english_text, surah_name, ayah_rang
 
     font_eng = "DejaVu-Sans"
 
-    # 1. قناع تباين داكن فوق الفيديو لضمان وضوح النصوص
+    # 1. قناع تباين سينمائي داكن
     overlay_clip = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.38).set_duration(audio_duration)
 
-    # 2. شريط علوي أنيق (اسم السورة والقارئ)
+    # 2. شريط علوي أنيق
     badge_text = format_arabic_text(f"{surah_name} ۞ {reciter_name}")
     header_clip = TextClip(
         badge_text,
-        fontsize=32,
+        fontsize=28,
         color="#F3F4F6",
         font=font_arabic,
-        method="caption",
-        size=(900, 80),
-        align="center"
-    ).set_duration(audio_duration).set_position(("center", 200))
+        method="label"
+    ).set_duration(audio_duration).set_position(("center", 180))
 
-    # 3. النص القرآني العربي
-    proper_quran = format_arabic_text(arabic_text)
-    text_len = len(proper_quran)
-    ar_fontsize = 26 if text_len > 550 else (30 if text_len > 350 else 36)
+    # 3. النص القرآني العربي باستخدام label المقسم برمجياً
+    word_count = len(arabic_text.split())
+    if word_count > 25:
+        ar_font_size = 28
+        w_per_line = 6
+    elif word_count > 15:
+        ar_font_size = 32
+        w_per_line = 5
+    else:
+        ar_font_size = 36
+        w_per_line = 4
 
+    formatted_arabic = wrap_arabic_text(arabic_text, words_per_line=w_per_line)
     arabic_clip = TextClip(
-        proper_quran,
-        fontsize=ar_fontsize,
+        formatted_arabic,
+        fontsize=ar_font_size,
         color="#FFFFFF",
         font=font_arabic,
-        method="caption",
-        size=(880, 800),
+        method="label",
         align="center"
-    ).set_duration(audio_duration).set_position(("center", 620))
+    ).set_duration(audio_duration).set_position(("center", "center"))
 
-    # 4. الترجمة الإنجليزية بخط فرعي أنيق
-    eng_fontsize = 20 if len(english_text) > 400 else 23
+    # 4. الترجمة الإنجليزية المقسمة
+    wrapped_en = "\n".join(textwrap.wrap(english_text, width=42))
+    en_font_size = 20 if len(english_text) > 250 else 23
     english_clip = TextClip(
-        f'"{english_text}"',
-        fontsize=eng_fontsize,
+        f'"{wrapped_en}"',
+        fontsize=en_font_size,
         color="#D1D5DB",
         font=font_eng,
-        method="caption",
-        size=(840, 360),
+        method="label",
         align="center"
     ).set_duration(audio_duration).set_position(("center", 1450))
 
@@ -223,7 +237,6 @@ def upload_video_to_github_release():
     return up_res.get("browser_download_url")
 
 def generate_ai_caption(surah_name, ayah_range, reciter_name, arabic_text):
-    """توليد تدبر قصير ومؤثر وسؤال تفاعلي بالذكاء الاصطناعي عبر Groq"""
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
     default_caption = (
         f"سورة {surah_name} 🤍 (الآيات {ayah_range})\n"
@@ -240,13 +253,13 @@ def generate_ai_caption(surah_name, ayah_range, reciter_name, arabic_text):
         from groq import Groq
         client = Groq(api_key=groq_key)
         prompt = (
-            f"اكتب كابشن جذاب ومؤثر لإنستغرام وتيك توك لتلاوة سورة {surah_name} الآيات ({ayah_range}) بصوت {reciter_name}.\n"
-            f"مقتطف من الآيات: {arabic_text[:150]}\n"
-            f"المطلوب بدقة وبدون أي مقدمات:\n"
-            f"1. سطرين تدبر إيماني هادئ ومؤثر.\n"
-            f"2. سؤال تفاعلي بسيط في النهاية يدعو للتأمل ومشاركة الأجر في التعليقات.\n"
-            f"3. 6 هاشتاقات عربية وإنجليزية قوية عن القرآن والتلاوة.\n"
-            f"اكتب المنشور مباشرة دون أي تمهيد."
+            f"اكتب كابشن جذاب ومؤثر لتلاوة سورة {surah_name} الآيات ({ayah_range}) بصوت {reciter_name}.\n"
+            f"الآيات: {arabic_text[:120]}\n"
+            f"المطلوب بدقة:\n"
+            f"1. سطرين تدبر إيماني هادئ.\n"
+            f"2. سؤال تفاعلي بسيط في النهاية يدعو للتأمل ومشاركة الأجر.\n"
+            f"3. 6 هاشتاقات قوية باللغتين العربية والإنجليزية.\n"
+            f"اكتب المنشور مباشرة دون أي مقدمات."
         )
         resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -323,7 +336,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, c
             ]
         }
 
-        # متطلبات يوتيوب وإنستغرام المعتمدة
+        # ضبط متطلبات المنصات لضمان القبول الفوري
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             post_input["metadata"] = {
                 "youtube": {
@@ -386,9 +399,7 @@ if __name__ == "__main__":
     build_aesthetic_quran_video(ar_text, en_text, s_name, a_range, r_name)
     pub_url = upload_video_to_github_release()
 
-    # توليد الكابشن التفاعلي عبر الذكاء الاصطناعي
     ai_caption = generate_ai_caption(s_name, a_range, r_name, ar_text)
-
     post_to_tiktok_via_buffer(pub_url, s_name, a_range, r_name, ai_caption)
 
     notify_telegram(f"✨ تم النشر السينمائي بنجاح!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}\n\nالكابشن المستخدم:\n{ai_caption[:180]}...")
