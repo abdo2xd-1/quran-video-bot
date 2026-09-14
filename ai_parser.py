@@ -34,7 +34,7 @@ def parse_user_request(user_text):
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_text}
         ],
-        model="gemma2-9b-it",
+        model="openai/gpt-oss-20b",
         temperature=0.1,
         response_format={"type": "json_object"}
     )
