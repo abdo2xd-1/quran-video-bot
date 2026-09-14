@@ -120,7 +120,7 @@ def build_aesthetic_quran_video(quran_text):
 
     proper_quran_text = format_arabic_text(quran_text)
 
-    # حساب حجم الخط تلقائياً حسب طول النص لتفادي تجاوز حدود ImageMagick نهائياً
+    # حساب حجم الخط ديناميكياً لتفادي تجاوز حدود ImageMagick
     text_length = len(proper_quran_text)
     if text_length > 600:
         calculated_fontsize = 26
@@ -225,12 +225,13 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     """
 
     for ch_id in channel_ids:
+        # استخدام قيمة "automatic" بالحروف الصغيرة المتوافقة مع مخطط Buffer
         variables = {
             "input": {
                 "channelId": ch_id,
                 "text": caption,
                 "mode": "shareNow",
-                "schedulingType": "AUTOMATIC",
+                "schedulingType": "automatic",
                 "media": {
                     "video": {
                         "url": video_url
