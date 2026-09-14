@@ -30,6 +30,7 @@ RECITERS_POOL = [
 ]
 
 def format_arabic_text(text):
+    """تشبيك الحروف وضبط اتجاه الكتابة العربية"""
     reshaped = arabic_reshaper.reshape(text)
     return get_display(reshaped)
 
@@ -130,8 +131,6 @@ def build_aesthetic_quran_video(quran_text):
     ).set_duration(audio_duration).set_position(("center", "center"))
 
     final = CompositeVideoClip([video_clip, txt_clip]).set_audio(audio_clip)
-    
-    # ضبط معدل نقل البيانات bitrate ليكون حجم الفيديو أقل من 45MB فيقبله تليجرام بسهولة
     final.write_videofile(
         "final_reel.mp4",
         fps=24,
@@ -195,13 +194,13 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         f"#{reciter_name.replace(' ', '_')} #quran #fyp #explore #reels #shorts"
     )
 
-    # استخدام GraphQL API المعتمد لـ Buffer Public API Tokens
     graphql_url = "https://api.buffer.com"
     headers = {
         "Authorization": f"Bearer {buffer_token}",
         "Content-Type": "application/json"
     }
 
+    # استعلام نظيف ومتوافق تماماً مع Buffer GraphQL
     mutation = """
     mutation CreatePost($input: CreatePostInput!) {
       createPost(input: $input) {
@@ -211,15 +210,11 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             status
           }
         }
-        ... on UserError {
-          message
-        }
       }
     }
     """
 
     for ch_id in channel_ids:
-        # تجهيز الطلب
         variables = {
             "input": {
                 "channelId": ch_id,
@@ -240,14 +235,11 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
                 timeout=30
             )
             data = res.json()
-            if "errors" in data:
-                print(f"⚠️ تفاصيل رد القناة {ch_id}: {data['errors']}", flush=True)
-            elif "data" in data and data["data"]["createPost"].get("message"):
-                print(f"⚠️ تفاصيل رد القناة {ch_id}: {data['data']['createPost']['message']}", flush=True)
+            if "errors" in data and data["errors"]:
+                print(f"⚠️ تفاصيل رد القناة {ch_id}: {data['errors'][0].get('message', data['errors'])}", flush=True)
             else:
                 print(f"✅ تم النشر بنجاح على القناة: {ch_id}", flush=True)
         except Exception as e:
-            # محاولة بديلة سريعة
             print(f"❌ خطأ أثناء النشر للقناة {ch_id}: {e}", flush=True)
 
 def notify_telegram(message):
