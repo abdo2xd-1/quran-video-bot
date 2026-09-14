@@ -30,7 +30,6 @@ RECITERS_POOL = [
 ]
 
 def format_arabic_text(text):
-    """تشبيك الحروف العربية وضبط اتجاه اليمين لليسار"""
     reshaped = arabic_reshaper.reshape(text)
     return get_display(reshaped)
 
@@ -131,11 +130,14 @@ def build_aesthetic_quran_video(quran_text):
     ).set_duration(audio_duration).set_position(("center", "center"))
 
     final = CompositeVideoClip([video_clip, txt_clip]).set_audio(audio_clip)
+    
+    # ضبط معدل نقل البيانات bitrate ليكون حجم الفيديو أقل من 45MB فيقبله تليجرام بسهولة
     final.write_videofile(
         "final_reel.mp4",
         fps=24,
         codec="libx264",
         audio_codec="aac",
+        bitrate="2500k",
         threads=4,
         preset="ultrafast"
     )
@@ -193,32 +195,59 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         f"#{reciter_name.replace(' ', '_')} #quran #fyp #explore #reels #shorts"
     )
 
+    # استخدام GraphQL API المعتمد لـ Buffer Public API Tokens
+    graphql_url = "https://api.buffer.com"
     headers = {
-        "Authorization": f"Bearer {buffer_token}"
+        "Authorization": f"Bearer {buffer_token}",
+        "Content-Type": "application/json"
     }
 
+    mutation = """
+    mutation CreatePost($input: CreatePostInput!) {
+      createPost(input: $input) {
+        ... on PostActionSuccess {
+          post {
+            id
+            status
+          }
+        }
+        ... on UserError {
+          message
+        }
+      }
+    }
+    """
+
     for ch_id in channel_ids:
-        payload = [
-            ("profile_ids[]", ch_id),
-            ("text", caption),
-            ("now", "true"),
-            ("media[video]", video_url),
-            ("media[link]", video_url)
-        ]
+        # تجهيز الطلب
+        variables = {
+            "input": {
+                "channelId": ch_id,
+                "text": caption,
+                "schedulingType": "now",
+                "media": {
+                    "video": {
+                        "url": video_url
+                    }
+                }
+            }
+        }
         try:
             res = requests.post(
-                "https://api.bufferapp.com/1/updates/create.json",
+                graphql_url,
                 headers=headers,
-                data=payload,
+                json={"query": mutation, "variables": variables},
                 timeout=30
             )
-            res_data = res.json()
-            if res_data.get("success"):
-                print(f"✅ تم النشر بنجاح على القناة: {ch_id}", flush=True)
+            data = res.json()
+            if "errors" in data:
+                print(f"⚠️ تفاصيل رد القناة {ch_id}: {data['errors']}", flush=True)
+            elif "data" in data and data["data"]["createPost"].get("message"):
+                print(f"⚠️ تفاصيل رد القناة {ch_id}: {data['data']['createPost']['message']}", flush=True)
             else:
-                err_msg = res_data.get("message") or res_data.get("error") or str(res_data)
-                print(f"⚠️ تفاصيل رد القناة {ch_id}: {err_msg}", flush=True)
+                print(f"✅ تم النشر بنجاح على القناة: {ch_id}", flush=True)
         except Exception as e:
+            # محاولة بديلة سريعة
             print(f"❌ خطأ أثناء النشر للقناة {ch_id}: {e}", flush=True)
 
 def notify_telegram(message):
