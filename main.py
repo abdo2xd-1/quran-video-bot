@@ -2,10 +2,14 @@ import os
 import sys
 import json
 import random
+import datetime
 import requests
 import arabic_reshaper
 from bidi.algorithm import get_display
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import (
+    VideoFileClip, AudioFileClip, TextClip, 
+    CompositeVideoClip, ColorClip
+)
 
 AUTO_CONTENT = [
     {"surah": 1, "start": 1, "end": 7, "name": "الفاتحة"},
@@ -30,26 +34,45 @@ RECITERS_POOL = [
 ]
 
 def format_arabic_text(text):
-    """تشبيك الحروف وضبط اتجاه الكتابة العربية"""
     reshaped = arabic_reshaper.reshape(text)
     return get_display(reshaped)
 
+def select_contextual_surah():
+    """اختيار السورة بذكاء حسب اليوم والوقت (الكهف يوم الجمعة، الملك بالليل)"""
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # توقيت القاهرة
+    is_friday = (now.weekday() == 4)
+    is_night = (now.hour >= 21 or now.hour <= 4)
+
+    if is_friday and 6 <= now.hour <= 17:
+        print("🕌 توقيت الجمعة: اختيار سورة الكهف...", flush=True)
+        return {"surah": 18, "start": 1, "end": 4, "name": "الكهف"}, True
+    elif is_night:
+        print("🌙 توقيت المساء: اختيار سورة الملك...", flush=True)
+        return {"surah": 67, "start": 1, "end": 5, "name": "الملك"}, False
+    else:
+        return random.choice(AUTO_CONTENT), False
+
 def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafasy", reciter_name="العفاسي"):
-    print(f"جلب آيات سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
+    print(f"جلب آيات وترجمة سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
     meta_res = requests.get(meta_url, timeout=15).json()
     surah_name = meta_res.get("data", {}).get("name", f"سورة {surah_num}")
 
-    verses_text = []
+    verses_arabic = []
+    verses_english = []
     audio_urls = []
 
     for a_num in range(start_ayah, end_ayah + 1):
+        # الآية بالصوت العربي
         ayah_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/{reciter_id}"
+        # الترجمة الإنجليزية
+        eng_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/en.sahih"
+
         try:
             a_res = requests.get(ayah_url, timeout=15).json()
             if a_res.get("status") == "OK" and "data" in a_res:
                 data = a_res["data"]
-                verses_text.append(data.get("text", ""))
+                verses_arabic.append(data.get("text", ""))
                 audio_link = data.get("audio")
                 if not audio_link:
                     fallback_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/ar.alafasy"
@@ -57,29 +80,33 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
                     audio_link = fb_res.get("data", {}).get("audio")
                 if audio_link:
                     audio_urls.append(audio_link)
+
+            eng_res = requests.get(eng_url, timeout=15).json()
+            if eng_res.get("status") == "OK" and "data" in eng_res:
+                verses_english.append(eng_res["data"].get("text", ""))
         except Exception as e:
             print(f"Error fetching ayah {a_num}: {e}", flush=True)
 
     if not audio_urls:
-        raise ValueError("فشل في جلب المقاطع الصوتية للآيات المحددة.")
+        raise ValueError("فشل في جلب المقاطع الصوتية.")
 
     with open("recitation.mp3", "wb") as f_out:
         for url in audio_urls:
             r = requests.get(url, timeout=20)
             f_out.write(r.content)
 
-    full_text = " ۝ ".join(verses_text) + " ۝"
+    full_arabic = " ۝ ".join(verses_arabic) + " ۝"
+    full_english = " ".join(verses_english)
     ayah_range = f"{start_ayah}-{end_ayah}"
-    is_friday = (surah_num == 18)
 
-    return full_text, surah_name, ayah_range, reciter_name, is_friday
+    return full_arabic, full_english, surah_name, ayah_range, reciter_name
 
 def download_aesthetic_background():
     print("تنزيل خلفية سينمائية من Pexels...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
     
-    queries = ["nature rain dark", "forest mist aesthetic", "ocean waves dark", "clouds starry sky"]
+    queries = ["nature rain dark aesthetic", "forest mist calm", "ocean waves dark moody", "starry night sky clouds"]
     query = random.choice(queries)
     url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=15"
     
@@ -99,10 +126,10 @@ def download_aesthetic_background():
 
     return "bg_video.mp4"
 
-def build_aesthetic_quran_video(quran_text):
-    print("مونتاج الفيديو بدقة 1080x1920...", flush=True)
+def build_aesthetic_quran_video(arabic_text, english_text, surah_name, ayah_range, reciter_name):
+    print("مونتاج الفيديو بالترجمة والقناع السينمائي...", flush=True)
     audio_clip = AudioFileClip("recitation.mp3")
-    audio_duration = audio_clip.duration + 1.5
+    audio_duration = audio_clip.duration + 1.2
 
     video_clip = VideoFileClip("bg_video.mp4")
     if video_clip.duration < audio_duration:
@@ -112,36 +139,60 @@ def build_aesthetic_quran_video(quran_text):
 
     video_clip = video_clip.resize((1080, 1920))
 
-    font_name = "DejaVu-Sans"
+    font_arabic = "DejaVu-Sans"
     if os.path.exists("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"):
-        font_name = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
+        font_arabic = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
     elif os.path.exists("/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"):
-        font_name = "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"
+        font_arabic = "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"
 
-    proper_quran_text = format_arabic_text(quran_text)
+    font_eng = "DejaVu-Sans"
 
-    # ضبط حجم الخط آلياً لتفادي أي مشاكل في الأبعاد
-    text_length = len(proper_quran_text)
-    if text_length > 600:
-        calculated_fontsize = 26
-    elif text_length > 400:
-        calculated_fontsize = 30
-    elif text_length > 200:
-        calculated_fontsize = 34
-    else:
-        calculated_fontsize = 40
+    # 1. قناع تباين داكن فوق الفيديو لضمان وضوح النصوص
+    overlay_clip = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.38).set_duration(audio_duration)
 
-    txt_clip = TextClip(
-        proper_quran_text,
-        fontsize=calculated_fontsize,
-        color="white",
-        font=font_name,
+    # 2. شريط علوي أنيق (اسم السورة والقارئ)
+    badge_text = format_arabic_text(f"{surah_name} ۞ {reciter_name}")
+    header_clip = TextClip(
+        badge_text,
+        fontsize=32,
+        color="#F3F4F6",
+        font=font_arabic,
         method="caption",
-        size=(860, 1400),
+        size=(900, 80),
         align="center"
-    ).set_duration(audio_duration).set_position(("center", "center"))
+    ).set_duration(audio_duration).set_position(("center", 200))
 
-    final = CompositeVideoClip([video_clip, txt_clip]).set_audio(audio_clip)
+    # 3. النص القرآني العربي
+    proper_quran = format_arabic_text(arabic_text)
+    text_len = len(proper_quran)
+    ar_fontsize = 26 if text_len > 550 else (30 if text_len > 350 else 36)
+
+    arabic_clip = TextClip(
+        proper_quran,
+        fontsize=ar_fontsize,
+        color="#FFFFFF",
+        font=font_arabic,
+        method="caption",
+        size=(880, 800),
+        align="center"
+    ).set_duration(audio_duration).set_position(("center", 620))
+
+    # 4. الترجمة الإنجليزية بخط فرعي أنيق
+    eng_fontsize = 20 if len(english_text) > 400 else 23
+    english_clip = TextClip(
+        f'"{english_text}"',
+        fontsize=eng_fontsize,
+        color="#D1D5DB",
+        font=font_eng,
+        method="caption",
+        size=(840, 360),
+        align="center"
+    ).set_duration(audio_duration).set_position(("center", 1450))
+
+    final = CompositeVideoClip(
+        [video_clip, overlay_clip, header_clip, arabic_clip, english_clip]
+    ).set_audio(audio_clip)
+
     final.write_videofile(
         "final_reel.mp4",
         fps=24,
@@ -160,32 +211,53 @@ def upload_video_to_github_release():
     tag_name = f"video-{int(random.random()*1000000000)}"
 
     create_url = f"https://api.github.com/repos/{repo}/releases"
-    headers = {
-        "Authorization": f"token {gh_token}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    rel_data = {
-        "tag_name": tag_name,
-        "name": f"Reel Release {tag_name}",
-        "draft": False,
-        "prerelease": False
-    }
+    headers = {"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"}
+    rel_data = {"tag_name": tag_name, "name": f"Reel Release {tag_name}", "draft": False, "prerelease": False}
     res = requests.post(create_url, headers=headers, json=rel_data, timeout=20).json()
     upload_url = res["upload_url"].split("{")[0]
 
     with open("final_reel.mp4", "rb") as f:
-        up_headers = {
-            "Authorization": f"token {gh_token}",
-            "Content-Type": "video/mp4"
-        }
-        up_res = requests.post(
-            f"{upload_url}?name=final_reel.mp4",
-            headers=up_headers,
-            data=f,
-            timeout=60
-        ).json()
+        up_headers = {"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}
+        up_res = requests.post(f"{upload_url}?name=final_reel.mp4", headers=up_headers, data=f, timeout=60).json()
 
     return up_res.get("browser_download_url")
+
+def generate_ai_caption(surah_name, ayah_range, reciter_name, arabic_text):
+    """توليد تدبر قصير ومؤثر وسؤال تفاعلي بالذكاء الاصطناعي عبر Groq"""
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    default_caption = (
+        f"سورة {surah_name} 🤍 (الآيات {ayah_range})\n"
+        f"القارئ: {reciter_name}\n\n"
+        f"أرح مسمعك وقلبك بآيات الله 🌿\n\n"
+        f"#قرآن #تلاوات_خاشعة #سورة_{surah_name.replace(' ', '_')} "
+        f"#{reciter_name.replace(' ', '_')} #quran #fyp #explore #reels #shorts"
+    )
+
+    if not groq_key:
+        return default_caption
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=groq_key)
+        prompt = (
+            f"اكتب كابشن جذاب ومؤثر لإنستغرام وتيك توك لتلاوة سورة {surah_name} الآيات ({ayah_range}) بصوت {reciter_name}.\n"
+            f"مقتطف من الآيات: {arabic_text[:150]}\n"
+            f"المطلوب بدقة وبدون أي مقدمات:\n"
+            f"1. سطرين تدبر إيماني هادئ ومؤثر.\n"
+            f"2. سؤال تفاعلي بسيط في النهاية يدعو للتأمل ومشاركة الأجر في التعليقات.\n"
+            f"3. 6 هاشتاقات عربية وإنجليزية قوية عن القرآن والتلاوة.\n"
+            f"اكتب المنشور مباشرة دون أي تمهيد."
+        )
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=220,
+            temperature=0.7
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Groq caption generation fallback: {e}", flush=True)
+        return default_caption
 
 def get_channel_service(ch_id, headers, graphql_url):
     query = """
@@ -201,7 +273,7 @@ def get_channel_service(ch_id, headers, graphql_url):
     except Exception:
         return ""
 
-def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, is_friday=False):
+def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, caption):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
 
@@ -210,15 +282,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         return
 
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
-
-    caption = (
-        f"سورة {surah_name} 🤍 (الآيات {ayah_range})\n"
-        f"القارئ: {reciter_name}\n\n"
-        f"أرح مسمعك وقلبك بآيات الله 🌿\n\n"
-        f"#قرآن #تلاوات_خاشعة #راحة_نفسية #سورة_{surah_name.replace(' ', '_')} "
-        f"#{reciter_name.replace(' ', '_')} #quran #fyp #explore #reels #shorts"
-    )
-
     video_title = f"سورة {surah_name} ({ayah_range}) | تلاوة خاشعة بصوت {reciter_name}"
 
     graphql_url = "https://api.buffer.com"
@@ -260,7 +323,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             ]
         }
 
-        # إعدادات يوتيوب وإنستغرام الكاملة
+        # متطلبات يوتيوب وإنستغرام المعتمدة
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             post_input["metadata"] = {
                 "youtube": {
@@ -290,14 +353,8 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
             elif "data" in data and data.get("data", {}).get("createPost", {}).get("message"):
                 err_msg = data['data']['createPost']['message']
 
-            if "shouldShareToFeed" in err_msg and "metadata" in post_input and "instagram" in post_input["metadata"]:
-                post_input["metadata"]["instagram"]["shouldShareToFeed"] = True
-                res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
-                data = res.json()
-                err_msg = data.get("data", {}).get("createPost", {}).get("message", "")
-
             if err_msg:
-                print(f"⚠️ تفاصيل رد القناة {ch_id}: {err_msg}", flush=True)
+                print(f"⚠️ رد القناة {ch_id}: {err_msg}", flush=True)
             else:
                 print(f"✅ تم النشر بنجاح على القناة: {ch_id}", flush=True)
         except Exception as e:
@@ -315,19 +372,24 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء النشر التلقائي للساعة الحالية ===", flush=True)
-    item = random.choice(AUTO_CONTENT)
+    print("=== بدء إنتاج ونشر فيديو القرآن المطور ===", flush=True)
+    item, is_special = select_contextual_surah()
     rec = random.choice(RECITERS_POOL)
     
-    notify_telegram(f"⏰ بدء إنتاج فيديو الساعة التلقائي:\nسورة {item['name']} بصوت {rec[1]}...")
-    
-    v_text, s_name, a_range, r_name, is_fri = get_custom_ayahs_data(
+    notify_telegram(f"🎬 جاري تجهيز فيديو سينمائي:\nسورة {item['name']} بصوت {rec[1]} مع الترجمة الإنجليزية...")
+
+    ar_text, en_text, s_name, a_range, r_name = get_custom_ayahs_data(
         item["surah"], item["start"], item["end"], rec[0], rec[1]
     )
+
     download_aesthetic_background()
-    build_aesthetic_quran_video(v_text)
+    build_aesthetic_quran_video(ar_text, en_text, s_name, a_range, r_name)
     pub_url = upload_video_to_github_release()
-    post_to_tiktok_via_buffer(pub_url, s_name, a_range, r_name, is_fri)
-    
-    notify_telegram(f"✅ اكتمل نشر فيديو الساعة بنجاح!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}")
-    print("=== اكتمل النشر التلقائي بنجاح ===", flush=True)
+
+    # توليد الكابشن التفاعلي عبر الذكاء الاصطناعي
+    ai_caption = generate_ai_caption(s_name, a_range, r_name, ar_text)
+
+    post_to_tiktok_via_buffer(pub_url, s_name, a_range, r_name, ai_caption)
+
+    notify_telegram(f"✨ تم النشر السينمائي بنجاح!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}\n\nالكابشن المستخدم:\n{ai_caption[:180]}...")
+    print("=== اكتمل خط الإنتاج بنجاح ===", flush=True)
