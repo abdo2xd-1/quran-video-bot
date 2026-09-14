@@ -34,7 +34,7 @@ def parse_user_request(user_text):
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_text}
         ],
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-8b-instant",
         temperature=0.1,
         response_format={"type": "json_object"}
     )
