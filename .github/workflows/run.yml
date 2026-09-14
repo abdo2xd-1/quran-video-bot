@@ -2,7 +2,6 @@ name: Hourly Quran Auto-Publisher
 
 on:
   schedule:
-    # يعمل في الدقيقة 0 من كل ساعة تلقائياً (24 مرة يومياً)
     - cron: '0 * * * *'
   workflow_dispatch:
 
@@ -28,7 +27,7 @@ jobs:
           sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"/<!-- <policy domain="path" rights="none" pattern="@\*" -->/' /etc/ImageMagick-6/policy.xml || true
           sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@\*"/' /etc/ImageMagick-6/policy.xml || true
           pip install --upgrade pip
-          pip install "moviepy==1.0.3" "Pillow<10.0.0" requests
+          pip install "moviepy==1.0.3" "Pillow<10.0.0" requests arabic-reshaper python-bidi
 
       - name: Run Quran Pipeline
         env:
