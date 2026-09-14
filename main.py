@@ -200,7 +200,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         "Content-Type": "application/json"
     }
 
-    # استعلام نظيف ومتوافق تماماً مع Buffer GraphQL
     mutation = """
     mutation CreatePost($input: CreatePostInput!) {
       createPost(input: $input) {
@@ -215,10 +214,12 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     """
 
     for ch_id in channel_ids:
+        # تم إضافة mode: "shareNow" الإجباري لحل المشكلة
         variables = {
             "input": {
                 "channelId": ch_id,
                 "text": caption,
+                "mode": "shareNow",
                 "schedulingType": "now",
                 "media": {
                     "video": {
