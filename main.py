@@ -214,12 +214,13 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
     """
 
     for ch_id in channel_ids:
-        # حذف schedulingType والاكتفاء بـ mode: shareNow المعتمد رسمياً
+        # استخدام AUTOMATIC المتوافقة مع نوع Enum الإلزامي في GraphQL
         variables = {
             "input": {
                 "channelId": ch_id,
                 "text": caption,
                 "mode": "shareNow",
+                "schedulingType": "AUTOMATIC",
                 "media": {
                     "video": {
                         "url": video_url
