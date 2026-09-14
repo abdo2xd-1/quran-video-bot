@@ -2,25 +2,30 @@ import os
 import sys
 import json
 import random
+import re
 import requests
 import arabic_reshaper
 from bidi.algorithm import get_display
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
+from moviepy.editor import (
+    VideoFileClip, AudioFileClip, ImageClip, 
+    CompositeVideoClip, ColorClip, concatenate_audioclips
+)
 
-# آيات قصيرة شديدة التأثير والسكينة (نفس نمط الفيديوهات المليونية)
-VIRAL_AYAT = [
-    {"surah": 13, "start": 28, "end": 28, "name": "الرعد"},     # ألا بذكر الله تطمئن القلوب
-    {"surah": 94, "start": 5, "end": 6, "name": "الشرح"},       # فإن مع العسر يسرا
-    {"surah": 20, "start": 46, "end": 46, "name": "طه"},        # إنني معكما أسمع وأرى
-    {"surah": 6, "start": 15, "end": 15, "name": "الأنعام"},     # قل إني أخاف إن عصيت ربي
-    {"surah": 2, "start": 186, "end": 186, "name": "البقرة"},    # وإذا سألك عبادي عني فإني قريب
-    {"surah": 65, "start": 3, "end": 3, "name": "الطلاق"},      # ويرزقه من حيث لا يحتسب
-    {"surah": 21, "start": 87, "end": 87, "name": "الأنبياء"},   # لا إله إلا أنت سبحانك إني كنت من الظالمين
-    {"surah": 93, "start": 3, "end": 5, "name": "الضحى"},       # ما ودعك ربك وما قلى
-    {"surah": 39, "start": 53, "end": 53, "name": "الزمر"},      # قل يا عبادي الذين أسرفوا على أنفسهم
-    {"surah": 55, "start": 13, "end": 13, "name": "الرحمن"},    # فبأي آلاء ربكما تكذبان
-    {"surah": 14, "start": 34, "end": 34, "name": "إبراهيم"}     # وآتاكم من كل ما سألتموه
+# باقة مختارة: سور كاملة ومقاطع لا تقل عن 3 آيات متناسقة للمنصات
+QURAN_PLAYLIST = [
+    {"surah": 108, "start": 1, "end": 3, "name": "الكوثر"},  # سورة كاملة (3 آيات)
+    {"surah": 103, "start": 1, "end": 3, "name": "العصر"},   # سورة كاملة (3 آيات)
+    {"surah": 112, "start": 1, "end": 4, "name": "الإخلاص"}, # سورة كاملة (4 آيات)
+    {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},   # سورة كاملة (5 آيات)
+    {"surah": 114, "start": 1, "end": 6, "name": "الناس"},   # سورة كاملة (6 آيات)
+    {"surah": 97,  "start": 1, "end": 5, "name": "القدر"},   # سورة كاملة (5 آيات)
+    {"surah": 94,  "start": 1, "end": 8, "name": "الشرح"},   # سورة كاملة (8 آيات)
+    {"surah": 95,  "start": 1, "end": 8, "name": "التين"},   # سورة كاملة (8 آيات)
+    {"surah": 1,   "start": 1, "end": 7, "name": "الفاتحة"}, # سورة كاملة (7 آيات)
+    {"surah": 67,  "start": 1, "end": 4, "name": "الملك"},   # 4 آيات
+    {"surah": 55,  "start": 1, "end": 5, "name": "الرحمن"},  # 5 آيات
+    {"surah": 93,  "start": 1, "end": 5, "name": "الضحى"}    # 5 آيات
 ]
 
 RECITERS_POOL = [
@@ -30,69 +35,97 @@ RECITERS_POOL = [
     ("ar.minshawi", "محمد صديق المنشاوي")
 ]
 
-AMIRI_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Bold.ttf"
+FONT_CDN_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
-def ensure_quran_font():
-    """تحميل خط المصحف الشريف Amiri Bold لضمان رسم الحروف والتشكيل بأعلى جودة"""
+def ensure_font():
+    """تحميل خط المصحف الشريف Amiri Bold"""
     font_path = "Amiri-Bold.ttf"
-    if not os.path.exists(font_path):
-        print("تحميل خط القرآن الكريم (Amiri Bold)...", flush=True)
+    if not os.path.exists(font_path) or os.path.getsize(font_path) < 40000:
         try:
-            r = requests.get(AMIRI_FONT_URL, timeout=15)
+            r = requests.get(FONT_CDN_URL, timeout=20)
             with open(font_path, "wb") as f:
                 f.write(r.content)
         except Exception as e:
             print(f"Font download fallback: {e}", flush=True)
-    return font_path if os.path.exists(font_path) else None
 
-def get_ayah_data(surah_num, start_ayah, end_ayah, reciter_id, reciter_name):
-    print(f"جلب الآيات سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
+    if os.path.exists(font_path) and os.path.getsize(font_path) > 40000:
+        return font_path
+
+    for sys_font in [
+        "/usr/share/fonts/truetype/amiri/Amiri-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf"
+    ]:
+        if os.path.exists(sys_font):
+            return sys_font
+    return None
+
+def clean_arabic_text(text):
+    """إزالة علامات الوقف العثمانية التي تفسد اتصال الحروف"""
+    bad_symbols = ['۝', '۞', 'ۚ', 'ۖ', 'ۗ', 'ۘ', 'ۛ', 'ۜ', '\u06dd', '\u06de', '\u06d6', '\u06d7', '\u06d8', '\u06d9', '\u06da', '\u06db', '\u06dc']
+    for sym in bad_symbols:
+        text = text.replace(sym, '')
+    return text.strip()
+
+def shape_text(text):
+    """تشبيك الحروف وضبط اتجاه القراءة مع المحافظة التامة على التشكيل"""
+    reshaper = arabic_reshaper.ArabicReshaper({
+        'delete_harakat': False,
+        'support_ligatures': True
+    })
+    return get_display(reshaper.reshape(text))
+
+def fetch_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id, reciter_name):
+    print(f"جلب آيات سورة {surah_num} من {start_ayah} إلى {end_ayah}...", flush=True)
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
-    meta_res = requests.get(meta_url, timeout=15).json()
-    surah_name = meta_res.get("data", {}).get("name", f"سورة {surah_num}")
+    surah_name = requests.get(meta_url, timeout=15).json().get("data", {}).get("name", f"سورة {surah_num}")
 
-    verses = []
-    audio_urls = []
+    ayahs_list = []
 
     for a_num in range(start_ayah, end_ayah + 1):
-        ayah_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/{reciter_id}"
-        try:
-            res = requests.get(ayah_url, timeout=15).json()
-            if res.get("status") == "OK" and "data" in res:
-                verses.append(res["data"].get("text", "").strip())
-                a_link = res["data"].get("audio")
-                if not a_link:
-                    fb = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/ar.alafasy", timeout=15).json()
-                    a_link = fb.get("data", {}).get("audio")
-                if a_link:
-                    audio_urls.append(a_link)
-        except Exception as e:
-            print(f"Audio fetch error: {e}", flush=True)
+        url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/{reciter_id}"
+        res = requests.get(url, timeout=15).json()
+        
+        if res.get("status") == "OK" and "data" in res:
+            raw_text = res["data"].get("text", "")
+            cleaned_text = clean_arabic_text(raw_text)
 
-    if not audio_urls:
-        raise ValueError("تعذر تحميل التلاوة الصوتية.")
+            # إزالة البسملة إذا كانت مدمجة في أول آية لغير الفاتحة
+            if a_num == 1 and surah_num != 1:
+                cleaned_text = cleaned_text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
-    with open("recitation.mp3", "wb") as f:
-        for url in audio_urls:
-            f.write(requests.get(url, timeout=25).content)
+            audio_url = res["data"].get("audio")
+            if not audio_url:
+                fb = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/ar.alafasy", timeout=15).json()
+                audio_url = fb.get("data", {}).get("audio")
 
-    full_arabic = " ۝ ".join(verses) + " ۝"
+            audio_filename = f"audio_{a_num}.mp3"
+            with open(audio_filename, "wb") as f:
+                f.write(requests.get(audio_url, timeout=25).content)
+
+            ayahs_list.append({
+                "number": a_num,
+                "text": cleaned_text,
+                "audio_path": audio_filename
+            })
+
+    if not ayahs_list:
+        raise ValueError("فشل في تحميل آيات السورة.")
+
     ayah_range = f"{start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"{start_ayah}"
-    return full_arabic, surah_name, ayah_range, reciter_name
+    return ayahs_list, surah_name, ayah_range, reciter_name
 
-def download_majestic_nature_video():
-    """تنزيل مشاهد جبال وطبيعة ساحرة تشبه لقطات سويسرا والنرويج تماماً"""
-    print("تنزيل خلفية طبيعية سينمائية فائقة الجودة من Pexels...", flush=True)
+def download_scenic_nature_video():
+    """جلب لقطة درون هادئة لجبال وبحيرات خضراء من Pexels"""
+    print("تنزيل خلفية جبال طبيعية هادئة...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
 
     queries = [
         "switzerland mountains drone vertical",
         "alps landscape sunny green valley",
-        "scenic mountains clouds aerial",
-        "norway mountains drone vertical",
-        "breathtaking nature aerial mountains valley",
-        "green mountains landscape vertical 4k"
+        "scenic mountains clouds aerial vertical",
+        "norway green mountains drone vertical",
+        "nature green valley aerial 4k vertical"
     ]
     query = random.choice(queries)
     url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=15"
@@ -102,98 +135,113 @@ def download_majestic_nature_video():
         videos = res.get("videos", [])
         if videos:
             chosen = random.choice(videos)
-            # اختيار أعلى جودة عمودية متاحة
             video_files = sorted(chosen["video_files"], key=lambda x: x.get("width", 0))
             best_link = video_files[-1]["link"]
-            v_data = requests.get(best_link, timeout=35).content
             with open("bg_video.mp4", "wb") as f:
-                f.write(v_data)
+                f.write(requests.get(best_link, timeout=35).content)
             return "bg_video.mp4"
     except Exception as e:
         print(f"Pexels warning: {e}", flush=True)
 
     return "bg_video.mp4"
 
-def generate_quran_text_overlay(arabic_text, target_width=1080, target_height=1920):
-    """توليد صورة شفافة بالآية القرآنية في المنتصف مع التشكيل والظل عبر Pillow"""
-    font_file = ensure_quran_font()
+def create_single_ayah_image(text, index, target_width=1080, target_height=1920):
+    """توليد صورة مخصصة لكل آية لتظهر في منتصف الشاشة مع الظل الأسود"""
+    font_file = ensure_font()
 
     img = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # تقسيم الآية لأسطر مريحة للعين (3 إلى 4 كلمات في السطر)
-    words = arabic_text.split()
-    words_per_line = 3 if len(words) <= 6 else 4
+    words = text.split()
+    # توزيع الكلمات لأسطر مريحة (بحد أقصى 4 كلمات في السطر)
     lines = []
-    for i in range(0, len(words), words_per_line):
-        chunk = " ".join(words[i:i + words_per_line])
-        # تشبيك الحروف وتطبيق الاتجاه العربي لكل سطر
-        reshaped = arabic_reshaper.reshape(chunk)
-        lines.append(get_display(reshaped))
+    w_per_line = 3 if len(words) <= 6 else 4
+    for i in range(0, len(words), w_per_line):
+        chunk = " ".join(words[i:i + w_per_line])
+        lines.append(shape_text(chunk))
 
-    formatted_multiline = "\n".join(lines)
+    multiline_text = "\n".join(lines)
 
-    # حجم الخط حسب عدد الكلمات
+    # ضبط حجم الخط حسب طول الآية
     if len(words) <= 5:
         font_size = 72
-    elif len(words) <= 10:
-        font_size = 62
+    elif len(words) <= 12:
+        font_size = 60
     else:
-        font_size = 52
+        font_size = 48
 
-    if font_file:
-        font = ImageFont.truetype(font_file, font_size)
-    else:
-        font = ImageFont.load_default()
+    font = ImageFont.truetype(font_file, font_size) if font_file else ImageFont.load_default()
 
     center_x = target_width // 2
     center_y = target_height // 2
 
-    # رسم ظل أسود خفيف ناعم لضمان القراءة بوضوح
-    for offset_x, offset_y in [(-3, -3), (3, -3), (-3, 3), (3, 3), (0, 4)]:
+    # رسم الظل المحيط لبروز النص الأبيض
+    for ox, oy in [(-3, -3), (3, -3), (-3, 3), (3, 3), (0, 4), (0, -4), (4, 0), (-4, 0)]:
         draw.multiline_text(
-            (center_x + offset_x, center_y + offset_y),
-            formatted_multiline,
+            (center_x + ox, center_y + oy),
+            multiline_text,
             font=font,
-            fill=(0, 0, 0, 220),
+            fill=(0, 0, 0, 240),
             align="center",
             anchor="mm",
-            spacing=25
+            spacing=32
         )
 
-    # رسم النص الأبيض الناصع
+    # رسم الآية باللون الأبيض
     draw.multiline_text(
         (center_x, center_y),
-        formatted_multiline,
+        multiline_text,
         font=font,
         fill=(255, 255, 255, 255),
         align="center",
         anchor="mm",
-        spacing=25
+        spacing=32
     )
 
-    overlay_path = "quran_overlay.png"
-    img.save(overlay_path, "PNG")
-    return overlay_path
+    out_name = f"ayah_overlay_{index}.png"
+    img.save(out_name, "PNG")
+    return out_name
 
-def build_viral_aesthetic_reel(arabic_text):
-    print("مونتاج الفيديو بالنمط القرآني النقي 100%...", flush=True)
-    audio_clip = AudioFileClip("recitation.mp3")
-    audio_duration = audio_clip.duration + 1.0
+def build_synchronized_video(ayahs_list):
+    print("مونتاج الفيديو وتزامن كل آية بدقة مع صوتها...", flush=True)
 
-    video_clip = VideoFileClip("bg_video.mp4")
-    if video_clip.duration < audio_duration:
-        video_clip = video_clip.loop(duration=audio_duration)
+    audio_clips = []
+    text_overlay_clips = []
+    current_time = 0.0
+
+    for idx, ayah in enumerate(ayahs_list):
+        a_clip = AudioFileClip(ayah["audio_path"])
+        duration = a_clip.duration
+        audio_clips.append(a_clip)
+
+        # إنشاء صورة الآية وضبط ظهورها واختفائها مع التوقيت الصوتي
+        img_path = create_single_ayah_image(ayah["text"], idx)
+        t_clip = (
+            ImageClip(img_path)
+            .set_start(current_time)
+            .set_duration(duration)
+            .set_position(("center", "center"))
+        )
+        text_overlay_clips.append(t_clip)
+        current_time += duration
+
+    # دمج الأصوات بالتسلسل التام
+    final_audio = concatenate_audioclips(audio_clips)
+    total_duration = current_time + 0.8
+
+    # ضبط وتكرار فيديو الخلفية
+    bg_clip = VideoFileClip("bg_video.mp4")
+    if bg_clip.duration < total_duration:
+        bg_clip = bg_clip.loop(duration=total_duration)
     else:
-        video_clip = video_clip.subclip(0, audio_duration)
+        bg_clip = bg_clip.subclip(0, total_duration)
 
-    video_clip = video_clip.resize((1080, 1920))
+    bg_clip = bg_clip.resize((1080, 1920))
 
-    # إنشاء طبقة النص القرآني كصورة شفافة مدمجة
-    overlay_img_path = generate_quran_text_overlay(arabic_text)
-    txt_clip = ImageClip(overlay_img_path).set_duration(audio_duration)
+    # طبقة تباين سينمائية ناعمة
+    dim_overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.25).set_duration(total_duration)
 
-    final = CompositeVideoClip([video_clip, txt_clip]).set_audio(audio_clip)
+    final = CompositeVideoClip([bg_clip, dim_overlay] + text_overlay_clips).set_audio(final_audio)
 
     final.write_videofile(
         "final_reel.mp4",
@@ -238,7 +286,7 @@ def get_channel_service(ch_id, headers, graphql_url):
     except Exception:
         return ""
 
-def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name):
+def post_to_buffer(video_url, surah_name, ayah_range, reciter_name):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
 
@@ -247,9 +295,8 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name):
         return
 
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
-
     caption = (
-        f"سورة {surah_name} 🤍 (الآية {ayah_range})\n"
+        f"سورة {surah_name} 🤍 (الآيات {ayah_range})\n"
         f"القارئ: {reciter_name}\n\n"
         f"أرح قلبك ومسمعك بآيات الله 🌿\n\n"
         f"#قرآن #تلاوة_خاشعة #راحة_نفسية #سورة_{surah_name.replace(' ', '_')} "
@@ -258,10 +305,7 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name):
     video_title = f"سورة {surah_name} ({ayah_range}) | تلاوة خاشعة بصوت {reciter_name}"
 
     graphql_url = "https://api.buffer.com"
-    headers = {
-        "Authorization": f"Bearer {buffer_token}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {buffer_token}", "Content-Type": "application/json"}
 
     mutation = """
     mutation CreatePost($input: CreatePostInput!) {
@@ -281,43 +325,21 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name):
 
     for ch_id in channel_ids:
         service = get_channel_service(ch_id, headers, graphql_url)
-
         post_input = {
             "channelId": ch_id,
             "text": caption,
             "mode": "shareNow",
             "schedulingType": "automatic",
-            "assets": [
-                {
-                    "video": {
-                        "url": video_url
-                    }
-                }
-            ]
+            "assets": [{"video": {"url": video_url}}]
         }
 
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
-            post_input["metadata"] = {
-                "youtube": {
-                    "title": video_title[:100],
-                    "categoryId": "27"
-                }
-            }
+            post_input["metadata"] = {"youtube": {"title": video_title[:100], "categoryId": "27"}}
         elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
-            post_input["metadata"] = {
-                "instagram": {
-                    "type": "reel",
-                    "shouldShareToFeed": True
-                }
-            }
+            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
         try:
-            res = requests.post(
-                graphql_url,
-                headers=headers,
-                json={"query": mutation, "variables": {"input": post_input}},
-                timeout=30
-            )
+            res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
             data = res.json()
             err_msg = ""
             if "errors" in data and data["errors"]:
@@ -344,21 +366,21 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء إنتاج فيديو القرآن السينمائي النقي (Viral Style) ===", flush=True)
-    item = random.choice(VIRAL_AYAT)
+    print("=== بدء إنتاج فيديو متزامن آية بآية ===", flush=True)
+    item = random.choice(QURAN_PLAYLIST)
     rec = random.choice(RECITERS_POOL)
 
-    notify_telegram(f"🎬 جاري إنتاج ريلز سينمائي:\nسورة {item['name']} ({item['start']}) بصوت {rec[1]}...")
+    notify_telegram(f"🎬 جاري إنتاج فيديو متزامن:\nسورة {item['name']} ({item['start']}-{item['end']}) بصوت {rec[1]}...")
 
-    ar_text, s_name, a_range, r_name = get_ayah_data(
+    ayahs, s_name, a_range, r_name = fetch_ayahs_data(
         item["surah"], item["start"], item["end"], rec[0], rec[1]
     )
 
-    download_majestic_nature_video()
-    build_viral_aesthetic_reel(ar_text)
+    download_scenic_nature_video()
+    build_synchronized_video(ayahs)
     pub_url = upload_video_to_github_release()
 
-    post_to_tiktok_via_buffer(pub_url, s_name, a_range, r_name)
+    post_to_buffer(pub_url, s_name, a_range, r_name)
 
-    notify_telegram(f"✨ تم النشر بنجاح على جميع القنوات!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}")
-    print("=== اكتمل النشر التلقائي بنجاح ===", flush=True)
+    notify_telegram(f"✨ تم النشر بنجاح!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}")
+    print("=== اكتمل النشر بنجاح ===", flush=True)
