@@ -8,7 +8,6 @@ from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVide
 def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafasy", reciter_name="العفاسي"):
     print(f"جاري جلب الآيات للسورة {surah_num} من {start_ayah} إلى {end_ayah}...", flush=True)
     
-    # جلب أسماء السور وبياناتها
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
     meta_res = requests.get(meta_url).json()
     surah_name = meta_res["data"]["name"]
@@ -16,7 +15,6 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
     verses_text = []
     audio_urls = []
 
-    # جلب الآيات المطلوبة بالصوت والنص
     for a_num in range(start_ayah, end_ayah + 1):
         ayah_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/{reciter_id}"
         a_res = requests.get(ayah_url).json()
@@ -24,7 +22,6 @@ def get_custom_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id="ar.alafas
             verses_text.append(a_res["data"]["text"])
             audio_urls.append(a_res["data"]["audio"])
 
-    # دمج الصوتيات
     combined_audio_path = "recitation.mp3"
     with open(combined_audio_path, "wb") as f_out:
         for url in audio_urls:
@@ -58,9 +55,8 @@ def download_aesthetic_background():
                 f.write(v_data)
             return "bg_video.mp4"
     except Exception as e:
-        print(f"Pexels fetch warning: {e}", flush=True)
+        print(f"Pexels warning: {e}", flush=True)
 
-    # خلفية بديلة افتراضية إذا تعذر Pexels
     return "bg_video.mp4"
 
 def build_aesthetic_quran_video(quran_text):
@@ -76,9 +72,13 @@ def build_aesthetic_quran_video(quran_text):
 
     video_clip = video_clip.resize((1080, 1920))
 
-    # نص الآيات القرآني المنسق
-    font_name = "Amiri-Regular" if os.path.exists("/usr/share/fonts/truetype/amiri/Amiri-Regular.ttf") else "Arial"
-    
+    # اختيار المسار المعتمد للخط العربي المثبت
+    font_name = "DejaVu-Sans"
+    if os.path.exists("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"):
+        font_name = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
+    elif os.path.exists("/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"):
+        font_name = "/usr/share/fonts/truetype/scheherazade/Scheherazade-Regular.ttf"
+
     txt_clip = TextClip(
         quran_text,
         fontsize=48,
@@ -107,7 +107,6 @@ def upload_video_to_github_release():
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     tag_name = f"video-{int(random.random()*1000000000)}"
 
-    # إنشاء Release جديد
     create_url = f"https://api.github.com/repos/{repo}/releases"
     headers = {
         "Authorization": f"token {gh_token}",
@@ -122,7 +121,6 @@ def upload_video_to_github_release():
     res = requests.post(create_url, headers=headers, json=rel_data).json()
     upload_url = res["upload_url"].split("{")[0]
 
-    # رفع ملف الفيديو المكتمل
     with open("final_reel.mp4", "rb") as f:
         up_headers = {
             "Authorization": f"token {gh_token}",
@@ -140,7 +138,7 @@ def upload_video_to_github_release():
 
 def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, is_friday=False):
     """
-    نشر الفيديو دفعة واحدة على جميع الحسابات المربوطة في Buffer (TikTok, YouTube Shorts, Instagram Reels)
+    نشر الفيديو دفعة واحدة على جميع الحسابات المربوطة في Buffer
     """
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
@@ -149,7 +147,6 @@ def post_to_tiktok_via_buffer(video_url, surah_name, ayah_range, reciter_name, i
         print("Buffer access token or Channel IDs not found. Skipping Buffer.", flush=True)
         return
 
-    # استخراج كل الـ IDs الممررة
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
 
     caption = (
