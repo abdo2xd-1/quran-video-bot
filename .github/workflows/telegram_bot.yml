@@ -31,7 +31,6 @@ jobs:
           pip install "moviepy==1.0.3" "Pillow<10.0.0" python-telegram-bot groq requests
 
       - name: Start Telegram Bot Listener
-        id: run_bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
@@ -40,15 +39,13 @@ jobs:
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python -u bot.py
+        run: python -u bot.py
 
-      - name: Wait 5 Minutes and Auto-Restart Workflow
+      - name: Auto-Restart Workflow
         if: always() && !cancelled()
         run: |
-          echo "انتظار 5 دقائق قبل إعادة التشغيل..."
-          sleep 300
-          echo "جاري إعادة تشغيل البوت ذاتياً..."
+          echo "إعادة تشغيل البوت ذاتياً..."
+          sleep 60
           curl -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
