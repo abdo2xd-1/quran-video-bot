@@ -3,11 +3,19 @@ name: 24/7 Telegram Quran Bot
 on:
   workflow_dispatch:
   schedule:
+    # يعمل كنسخة احتياطية كل عدة ساعات إذا توقف لسبب غير متوقع
     - cron: '0 */5 * * *'
+
+permissions:
+  contents: write
+  actions: write
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    # الحد الأقصى للجلسة الواحدة قبل التجديد التلقائي (6 ساعات هو الحد الأقصى في GitHub)
+    timeout-minutes: 350
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -22,9 +30,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick fonts-noto-core fonts-sil-scheherazade
           pip install --upgrade pip
-          pip install python-telegram-bot groq requests moviepy pillow
+          pip install "moviepy==1.0.3" python-telegram-bot groq requests pillow
 
       - name: Start Telegram Bot Listener
+        id: run_bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
@@ -33,4 +42,19 @@ jobs:
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python -u bot.py
+        run: |
+          # تشغيل البوت مع حماية استمرار العملية
+          python -u bot.py
+
+      - name: Wait 5 Minutes and Auto-Restart Workflow
+        # يتم تنفيذ هذه الخطوة دائماً طالما لم تقم بعمل Cancel يدوي
+        if: always() && !cancelled()
+        run: |
+          echo "انتظار 5 دقائق (300 ثانية) قبل إعادة التشغيل التلقائي..."
+          sleep 300
+          echo "جاري إعادة تشغيل البوت ذاتياً..."
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/telegram_bot.yml/dispatches \
+            -d '{"ref":"${{ github.ref_name }}"}'
