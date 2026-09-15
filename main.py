@@ -6,76 +6,68 @@ import random
 import shutil
 import subprocess
 import requests
+from PIL import Image, ImageDraw, ImageFilter
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, 
     CompositeVideoClip, ColorClip, concatenate_audioclips
 )
 
-# قائمة السور والمقاطع القصيرة (3 آيات كحد أدنى إلى سورة كاملة)
-QURAN_PLAYLIST = [
-    {"surah": 108, "start": 1, "end": 3, "name": "الكوثر"},
-    {"surah": 103, "start": 1, "end": 3, "name": "العصر"},
-    {"surah": 112, "start": 1, "end": 4, "name": "الإخلاص"},
-    {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},
-    {"surah": 114, "start": 1, "end": 6, "name": "الناس"},
-    {"surah": 97,  "start": 1, "end": 5, "name": "القدر"},
-    {"surah": 94,  "start": 1, "end": 8, "name": "الشرح"},
-    {"surah": 95,  "start": 1, "end": 8, "name": "التين"},
-    {"surah": 1,   "start": 1, "end": 7, "name": "الفاتحة"},
-    {"surah": 67,  "start": 1, "end": 4, "name": "الملك"},
-    {"surah": 55,  "start": 1, "end": 5, "name": "الرحمن"},
-    {"surah": 93,  "start": 1, "end": 5, "name": "الضحى"}
+# ----------------- 1. صيدلية المشاعر (Emotional Targeting Engine) -----------------
+EMOTIONAL_PHARMACY = [
+    {
+        "emotion_id": "sadness",
+        "badge": "رسالة لقلبك إذا كنت حزيناً أو متعباً 🌿",
+        "hook": "إذا ضاقت بك الدنيا وتعب قلبك.. استمع لرسالة الله إليك 🤍",
+        "playlist": "سكينة القلوب وتفريج الهموم",
+        "surah": 94, "start": 1, "end": 8, "name": "الشرح"
+    },
+    {
+        "emotion_id": "anxiety",
+        "badge": "إذا كنت قلقاً من المستقبل أو الرزق 🕊️",
+        "hook": "اطمئن على رزقك ومستقبلك.. الأمر كله بيد الله 🌿",
+        "playlist": "آيات الرزق والفرج العاجل",
+        "surah": 65, "start": 2, "end": 3, "name": "الطلاق"
+    },
+    {
+        "emotion_id": "peace",
+        "badge": "تلاوة تنزل السكينة والأمان على روحك 🤍",
+        "hook": "أرح سمعك وفؤادك من صخب الدنيا وضغوطها 🕊️",
+        "playlist": "رفيق النوم والسكينة",
+        "surah": 13, "start": 28, "end": 28, "name": "الرعد"
+    },
+    {
+        "emotion_id": "hope",
+        "badge": "مهما بلغت ذنوبك وتثاقلت خطاك.. ربك غفور 🌧️",
+        "hook": "بداية جديدة وأمل يتجدد مع آيات المغفرة والرحمة 🤍",
+        "playlist": "أبواب التوبة والرجاء",
+        "surah": 93, "start": 1, "end": 5, "name": "الضحى"
+    },
+    {
+        "emotion_id": "comfort",
+        "badge": "حين تشعر بأنك وحيد لا نصير لك 🌿",
+        "hook": "إن الله معك يسمع دبيب نملتك وخلجات صدرك 🤍",
+        "playlist": "معية الله وأمان الروح",
+        "surah": 20, "start": 46, "end": 46, "name": "طه"
+    },
+    {
+        "emotion_id": "night_sleep",
+        "badge": "أمان وحصن لقلبك قبل أن تغمض عينيك 🌙",
+        "hook": "تلاوة هادئة تعينك على نوم مطمئن وسكينة تامة 🕊️",
+        "playlist": "سورة الملك قبل النوم",
+        "surah": 67, "start": 1, "end": 4, "name": "الملك"
+    }
 ]
 
-# باقة القراء الأكثر انتشاراً وتأثيراً على تيك توك وريلز
+# باقة القراء الأكثر انتشاراً وتأثيراً
 RECITERS_POOL = [
     {"id": "Dussary_128kbps", "name": "ياسر الدوسري", "tone": "تلاوة خاشعة تهز القلوب"},
-    {"id": "Nasser_Alqatami_128kbps", "name": "ناصر القطامي", "tone": "تلاوة خاشعة وباكية"},
-    {"id": "Fares_Abbad_64kbps", "name": "فارس عباد", "tone": "نبرة شجية حزينة تريح البال"},
+    {"id": "Nasser_Alqatami_128kbps", "name": "ناصر القطامي", "tone": "نبرة باكية مؤثرة"},
+    {"id": "Fares_Abbad_64kbps", "name": "فارس عباد", "tone": "تلاوة شجية حزينة"},
     {"id": "MaherAlMuaiqly128kbps", "name": "ماهر المعيقلي", "tone": "سكينة وطمأنينة الحرم"},
-    {"id": "Alafasy_128kbps", "name": "مشاري العفاسي", "tone": "راحة نفسية وهدوء للروح"},
+    {"id": "Alafasy_128kbps", "name": "مشاري العفاسي", "tone": "راحة نفسية وهدوء للبال"},
     {"id": "Abdul_Basit_Murattal_192kbps", "name": "عبد الباسط عبد الصمد", "tone": "تلاوة مهيبة تأسر الروح"},
-    {"id": "Minshawy_Murattal_128kbps", "name": "محمد صديق المنشاوي", "tone": "خشوع وتدبر عميق"},
-    {"id": "Ghamadi_40kbps", "name": "سعد الغامدي", "tone": "تلاوة هادئة لراحة البال"}
+    {"id": "Minshawy_Murattal_128kbps", "name": "محمد صديق المنشاوي", "tone": "خشوع وتدبر عميق"}
 ]
-
-THEMATIC_SERIES = {
-    "سكينة": {
-        "tag": "#سلسلة_سكينة_القلب",
-        "playlist": "سكينة وهدوء القلب",
-        "hooks": [
-            "تلاوة تريح القلب وتزيل الهم والضيق 🌿",
-            "أرح مسمعك ونفسك بآيات الله والسكينة 🤍",
-            "سكينة تغمر الروح وهدوء للبال 🕊️"
-        ]
-    },
-    "نوم": {
-        "tag": "#سلسلة_تلاوات_النوم",
-        "playlist": "رفيق النوم والسكينة",
-        "hooks": [
-            "أنزل السكينة على روحك قبل أن تنام 🌙",
-            "تلاوة هادئة تعينك على نوم عميق ومطمئن 🕊️",
-            "أرح سمعك وقلبك قبل المنام بآيات الله 🤍"
-        ]
-    },
-    "قصار": {
-        "tag": "#سلسلة_قصار_السور",
-        "playlist": "قصار السور كاملة",
-        "hooks": [
-            "دقيقة من الطمأنينة لا تفوتها 🤍",
-            "استمع بقلبك لقصار السور بتلاوة خاشعة 🌿",
-            "تلاوة مباركة تملأ يومك بالبركة والراحة 🕊️"
-        ]
-    },
-    "فجر": {
-        "tag": "#سلسلة_آيات_الفجر",
-        "playlist": "آيات الفجر والبركة",
-        "hooks": [
-            "بداية يوم مطمئنة ومباركة بآيات الله 🕊️",
-            "آيات تفتح لك أبواب الرزق والطمأنينة مع الفجر 🌿"
-        ]
-    }
-}
 
 PINNED_COMMENTS = [
     "اكتب شيئاً تؤجر عليه في ميزان حسناتك 🌿 (سبحان الله، الحمد لله، لا إله إلا الله، الله أكبر) 🤍",
@@ -85,35 +77,6 @@ PINNED_COMMENTS = [
 ]
 
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
-
-def build_seo_metadata(surah_name, ayah_range, reciter_info, surah_num):
-    r_name = reciter_info["name"]
-    r_tone = reciter_info["tone"]
-
-    if surah_num == 67:
-        theme = THEMATIC_SERIES["نوم"]
-        intent_title = f"{r_tone} قبل النوم 🌙 سورة {surah_name} ({ayah_range}) | {r_name}"
-    elif surah_num == 93:
-        theme = THEMATIC_SERIES["فجر"]
-        intent_title = f"آيات تفتح أبواب الرزق 🕊️ سورة {surah_name} | {r_name}"
-    elif surah_num in [1, 94, 55]:
-        theme = THEMATIC_SERIES["سكينة"]
-        intent_title = f"{r_tone} تريح القلب 🌿 سورة {surah_name} كاملة | {r_name}"
-    else:
-        theme = THEMATIC_SERIES["قصار"]
-        intent_title = f"قصار السور لراحة البال 🤍 سورة {surah_name} كاملة | {r_name}"
-
-    hook = random.choice(theme["hooks"])
-    caption = (
-        f"{hook}\n\n"
-        f"📖 سورة {surah_name} ({ayah_range})\n"
-        f"🎙️ القارئ: {r_name} ({r_tone})\n"
-        f"📁 {theme['playlist']}\n\n"
-        f"شاركها لعلها تريح قلباً متعباً وتكون لك صدقة جارية 🤍\n\n"
-        f"{theme['tag']} #تلاوة_خاشعة #تلاوات_باكية #راحة_نفسية #قرآن #سورة_{surah_name.replace(' ', '_')} "
-        f"#{r_name.replace(' ', '_')} #quran #fyp #explore #shorts"
-    )
-    return intent_title[:100], caption
 
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
@@ -153,68 +116,226 @@ def clean_arabic_text(text):
         text = text.replace(s, '')
     return text.strip()
 
+# ----------------- 2. معالجة الصوت 8D + المطر المحيطي الخافت -----------------
+def apply_8d_ambient_sound(raw_audio_path, output_audio_path, duration):
+    """
+    تطبيق فلتر 8D Reverb + توليد صوت مطر خافت طبيعي (-22dB) ومعايرة الصوت بمواصفات البث
+    """
+    print("تطبيق هندسة الصوت 8D ومزج المطر المحيطي عبر FFmpeg...", flush=True)
+    cmd = [
+        "ffmpeg", "-y", "-i", raw_audio_path,
+        "-filter_complex",
+        (
+            f"anoisesrc=d={duration}:c=pink:r=44100:a=0.012,lowpass=f=1100,volume=0.25[ambient];"
+            f"[0:a]aecho=0.8:0.88:38|58:0.32|0.22,apulsator=hz=0.09:amount=0.45,volume=1.0[voice];"
+            f"[voice][ambient]amix=inputs=2:duration=first:dropout_transition=2,loudnorm=I=-14:LRA=7:TP=-1.5[out]"
+        ),
+        "-map", "[out]",
+        "-c:a", "aac", "-b:a", "192k",
+        output_audio_path
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return output_audio_path
+    except Exception as e:
+        print(f"8D DSP warning: {e}, fallback to raw audio", flush=True)
+        return raw_audio_path
+
+# ----------------- 3. توليد طبقة ذرات الغبار المضيئة (Particles) -----------------
+def create_atmospheric_particles_overlay(target_width=1080, target_height=1920):
+    """رسم طبقة ذرات ضوء ذهبية مضيئة سينمائية تطفو فوق المشهد"""
+    img = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # توليد 45 ذرة غبار عشوائية ناعمة
+    random.seed(42)
+    for _ in range(45):
+        x = random.randint(40, target_width - 40)
+        y = random.randint(60, target_height - 60)
+        radius = random.randint(3, 14)
+        alpha = random.randint(35, 110)
+        draw.ellipse(
+            (x - radius, y - radius, x + radius, y + radius),
+            fill=(230, 195, 120, alpha)
+        )
+
+    blurred = img.filter(ImageFilter.GaussianBlur(radius=4))
+    overlay_path = "particles_layer.png"
+    blurred.save(overlay_path, "PNG")
+    return overlay_path
+
+# ----------------- 4. تظليل الكلمات كلمة بكلمة بالذهب (Karaoke Highlight) -----------------
+def render_word_highlight_html(words, active_idx, emotional_badge, font_b64, watermark_handle):
+    chrome_bin = get_chrome_path()
+
+    words_html = []
+    for i, w in enumerate(words):
+        if i == active_idx:
+            # الكلمة المقروءة حالياً تضيء باللون الذهبي الخالص
+            words_html.append(f'<span class="word active-gold">{w}</span>')
+        else:
+            words_html.append(f'<span class="word regular-white">{w}</span>')
+
+    full_verse_html = " ".join(words_html)
+    font_size = 70 if len(words) <= 6 else (58 if len(words) <= 13 else 46)
+
+    html_code = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {{
+    font-family: 'AmiriQuran';
+    src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype');
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    width: 1080px;
+    height: 1920px;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    position: relative;
+  }}
+  .emotional-badge {{
+    position: absolute;
+    top: 190px;
+    background: rgba(10, 14, 20, 0.55);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(212, 175, 55, 0.45);
+    color: #F9FAFB;
+    font-family: 'AmiriQuran', sans-serif;
+    font-size: 26px;
+    padding: 10px 28px;
+    border-radius: 30px;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    direction: rtl;
+  }}
+  .ayah-container {{
+    direction: rtl;
+    text-align: center;
+    font-family: 'AmiriQuran', serif;
+    font-size: {font_size}px;
+    font-weight: bold;
+    line-height: 1.95;
+    max-width: 930px;
+    margin: auto 0;
+  }}
+  .word {{
+    display: inline-block;
+    margin: 0 4px;
+    transition: all 0.2s ease;
+  }}
+  .regular-white {{
+    color: #FFFFFF;
+    text-shadow: 
+      0 0 10px rgba(0, 0, 0, 0.95),
+      0 4px 18px rgba(0, 0, 0, 0.9);
+  }}
+  .active-gold {{
+    color: #D4AF37 !important;
+    transform: scale(1.08);
+    text-shadow: 
+      0 0 15px rgba(212, 175, 55, 0.9),
+      0 0 35px rgba(212, 175, 55, 0.6),
+      0 4px 18px rgba(0, 0, 0, 0.95);
+  }}
+  .watermark {{
+    position: absolute;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'AmiriQuran', sans-serif;
+    font-size: 24px;
+    color: rgba(255, 255, 255, 0.45);
+    letter-spacing: 2px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+    direction: ltr;
+  }}
+</style>
+</head>
+<body>
+  <div class="emotional-badge">🎧 ضع السماعات • {emotional_badge}</div>
+  <div class="ayah-container">{full_verse_html}</div>
+  <div class="watermark">{watermark_handle}</div>
+</body>
+</html>"""
+
+    html_file = f"temp_frame_{active_idx}.html"
+    png_file = f"frame_highlight_{active_idx}.png"
+
+    with open(html_file, "w", encoding="utf-8") as f:
+        f.write(html_code)
+
+    cmd = [
+        chrome_bin, "--headless", "--no-sandbox", "--disable-gpu",
+        "--window-size=1080,1920", "--default-background-color=00000000",
+        f"--screenshot={os.path.abspath(png_file)}",
+        f"file://{os.path.abspath(html_file)}"
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.path.exists(html_file):
+        os.remove(html_file)
+    return png_file
+
+# ----------------- 5. بناء الفيديو السينمائي الكامل -----------------
 def fetch_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id, reciter_name):
-    print(f"جلب آيات سورة {surah_num} ({start_ayah}-{end_ayah}) بصوت {reciter_name} عبر EveryAyah...", flush=True)
+    print(f"جلب آيات سورة {surah_num} بصوت {reciter_name}...", flush=True)
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
     surah_name = requests.get(meta_url, timeout=15).json().get("data", {}).get("name", f"سورة {surah_num}")
 
     ayahs_list = []
-
     for a_num in range(start_ayah, end_ayah + 1):
-        # نص الآية المشكول
-        text_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/quran-simple"
-        t_res = requests.get(text_url, timeout=15).json()
+        t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/quran-simple", timeout=15).json()
         cleaned_text = clean_arabic_text(t_res.get("data", {}).get("text", ""))
 
         if a_num == 1 and surah_num != 1:
             cleaned_text = cleaned_text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
-        # جلب الصوت الدقيق آية بآية من خوادم EveryAyah
         surah_str = f"{surah_num:03d}"
         ayah_str = f"{a_num:03d}"
-        primary_audio = f"https://everyayah.com/data/{reciter_id}/{surah_str}{ayah_str}.mp3"
-        fallback_audio = f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3"
+        aud_url = f"https://everyayah.com/data/{reciter_id}/{surah_str}{ayah_str}.mp3"
+        fallback_aud = f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3"
 
-        audio_filename = f"audio_{a_num}.mp3"
+        aud_file = f"audio_{a_num}.mp3"
         try:
-            r = requests.get(primary_audio, timeout=25)
+            r = requests.get(aud_url, timeout=25)
             if r.status_code == 200 and len(r.content) > 3000:
-                with open(audio_filename, "wb") as f:
+                with open(aud_file, "wb") as f:
                     f.write(r.content)
             else:
-                r_fb = requests.get(fallback_audio, timeout=25)
-                with open(audio_filename, "wb") as f:
-                    f.write(r_fb.content)
-        except Exception as e:
-            print(f"Audio download fallback triggered: {e}", flush=True)
-            r_fb = requests.get(fallback_audio, timeout=25)
-            with open(audio_filename, "wb") as f:
-                f.write(r_fb.content)
+                with open(aud_file, "wb") as f:
+                    f.write(requests.get(fallback_aud, timeout=25).content)
+        except Exception:
+            with open(aud_file, "wb") as f:
+                f.write(requests.get(fallback_aud, timeout=25).content)
 
         ayahs_list.append({
             "number": a_num,
             "text": cleaned_text,
-            "audio_path": audio_filename
+            "audio_path": aud_file
         })
 
     ayah_range = f"{start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"{start_ayah}"
     return ayahs_list, surah_name, ayah_range, reciter_name
 
 def download_scenic_nature_video():
-    print("تنزيل خلفية طبيعة سينمائية من Pexels...", flush=True)
+    print("تنزيل خلفية طبيعية فائقة الجودة من Pexels...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
 
     queries = [
         "switzerland mountains drone vertical",
-        "alps landscape sunny green valley",
         "scenic mountains clouds aerial vertical",
         "norway green mountains drone vertical",
-        "foggy mountain road cinematic vertical"
+        "foggy mountain valley cinematic vertical"
     ]
     query = random.choice(queries)
-    url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=15"
-
+    url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=12"
     try:
         res = requests.get(url, headers=headers, timeout=15).json()
         videos = res.get("videos", [])
@@ -227,145 +348,70 @@ def download_scenic_nature_video():
             return "bg_video.mp4"
     except Exception as e:
         print(f"Pexels warning: {e}", flush=True)
-
     return "bg_video.mp4"
 
-def render_quran_ayah_image(text, index, font_b64, watermark_handle):
-    chrome_bin = get_chrome_path()
-
-    words_count = len(text.split())
-    if words_count <= 5:
-        font_size = 72
-    elif words_count <= 12:
-        font_size = 62
-    elif words_count <= 20:
-        font_size = 52
-    else:
-        font_size = 44
-
-    html_content = f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="utf-8">
-<style>
-  @font-face {{
-    font-family: 'AmiriQuran';
-    src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype');
-  }}
-  * {{
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }}
-  body {{
-    width: 1080px;
-    height: 1920px;
-    background-color: rgba(0, 0, 0, 0);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
-    position: relative;
-  }}
-  .ayah-text {{
-    direction: rtl;
-    text-align: center;
-    font-family: 'AmiriQuran', serif;
-    font-size: {font_size}px;
-    font-weight: bold;
-    color: #ffffff;
-    line-height: 1.85;
-    max-width: 920px;
-    text-shadow: 
-      0 0 10px rgba(0, 0, 0, 0.95),
-      0 4px 18px rgba(0, 0, 0, 0.9),
-      0 0 30px rgba(0, 0, 0, 0.85);
-  }}
-  .watermark {{
-    position: absolute;
-    bottom: 120px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-family: 'AmiriQuran', sans-serif;
-    font-size: 25px;
-    color: rgba(255, 255, 255, 0.45);
-    letter-spacing: 2px;
-    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
-    direction: ltr;
-  }}
-</style>
-</head>
-<body>
-  <div class="ayah-text">{text}</div>
-  <div class="watermark">{watermark_handle}</div>
-</body>
-</html>"""
-
-    html_filename = f"temp_ayah_{index}.html"
-    png_filename = f"ayah_overlay_{index}.png"
-
-    with open(html_filename, "w", encoding="utf-8") as f:
-        f.write(html_content)
-
-    html_abs = os.path.abspath(html_filename)
-    png_abs = os.path.abspath(png_filename)
-
-    cmd = [
-        chrome_bin,
-        "--headless",
-        "--disable-gpu",
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--hide-scrollbars",
-        "--window-size=1080,1920",
-        "--default-background-color=00000000",
-        f"--screenshot={png_abs}",
-        f"file://{html_abs}"
-    ]
-
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    if os.path.exists(html_filename):
-        os.remove(html_filename)
-
-    return png_filename
-
-def build_synchronized_video(ayahs_list, watermark_handle):
-    print("مونتاج الفيديو وتزامن ظهور كل آية مع الصوت بدقة...", flush=True)
+def build_advanced_quran_video(ayahs_list, emotional_item, watermark_handle):
+    print("مونتاج الفيديو بنظام تظليل الكلمات بالذهب والذرات السينمائية...", flush=True)
     font_b64 = get_font_base64()
 
     audio_clips = []
     text_overlay_clips = []
     current_time = 0.0
 
-    for idx, ayah in enumerate(ayahs_list):
+    # بناء طبقات الكلمات المتزامنة كلمة بكلمة
+    for ayah in ayahs_list:
         a_clip = AudioFileClip(ayah["audio_path"])
-        duration = a_clip.duration
+        ayah_duration = a_clip.duration
         audio_clips.append(a_clip)
 
-        img_path = render_quran_ayah_image(ayah["text"], idx, font_b64, watermark_handle)
-        t_clip = (
-            ImageClip(img_path)
-            .set_start(current_time)
-            .set_duration(duration)
-            .set_position(("center", "center"))
-        )
-        text_overlay_clips.append(t_clip)
-        current_time += duration
+        words = ayah["text"].split()
+        if not words:
+            continue
 
-    final_audio = concatenate_audioclips(audio_clips)
-    total_duration = current_time + 0.8
+        # حساب التوقيت النسبي لكل كلمة بناءً على عدد الحروف
+        total_chars = sum(len(w) for w in words)
+        word_start_time = current_time
 
+        for w_idx, w in enumerate(words):
+            w_duration = (len(w) / total_chars) * ayah_duration
+            frame_img = render_word_highlight_html(
+                words, w_idx, emotional_item["badge"], font_b64, watermark_handle
+            )
+            t_clip = (
+                ImageClip(frame_img)
+                .set_start(word_start_time)
+                .set_duration(w_duration)
+                .set_position(("center", "center"))
+            )
+            text_overlay_clips.append(t_clip)
+            word_start_time += w_duration
+
+        current_time += ayah_duration
+
+    # دمج الصوت ومعالجة الـ 8D + المطر المحيطي
+    merged_raw_audio = concatenate_audioclips(audio_clips)
+    merged_raw_audio.write_audiofile("temp_raw_audio.mp3", fps=44100, logger=None)
+
+    total_duration = current_time + 1.0
+    final_8d_audio_path = apply_8d_ambient_sound("temp_raw_audio.mp3", "final_8d_audio.mp3", total_duration)
+    final_audio = AudioFileClip(final_8d_audio_path)
+
+    # ضبط فيديو الخلفية
     bg_clip = VideoFileClip("bg_video.mp4")
     if bg_clip.duration < total_duration:
         bg_clip = bg_clip.loop(duration=total_duration)
     else:
         bg_clip = bg_clip.subclip(0, total_duration)
-
     bg_clip = bg_clip.resize((1080, 1920))
-    dim_overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.20).set_duration(total_duration)
 
-    final = CompositeVideoClip([bg_clip, dim_overlay] + text_overlay_clips).set_audio(final_audio)
+    # طبقة تباين وتعتيم هادئة
+    dim_overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.22).set_duration(total_duration)
+
+    # طبقة جزيئات الضوء الذهبية (Particles)
+    particles_file = create_atmospheric_particles_overlay()
+    particles_clip = ImageClip(particles_file).set_duration(total_duration).set_opacity(0.65)
+
+    final = CompositeVideoClip([bg_clip, dim_overlay, particles_clip] + text_overlay_clips).set_audio(final_audio)
 
     final.write_videofile(
         "final_reel.mp4",
@@ -397,13 +443,7 @@ def upload_video_to_github_release():
     return up_res.get("browser_download_url")
 
 def get_channel_service(ch_id, headers, graphql_url):
-    query = """
-    query GetChannel($input: ChannelInput!) {
-      channel(input: $input) {
-        service
-      }
-    }
-    """
+    query = """query GetChannel($input: ChannelInput!) { channel(input: $input) { service } }"""
     try:
         r = requests.post(graphql_url, headers=headers, json={"query": query, "variables": {"input": {"id": ch_id}}}, timeout=10)
         return r.json().get("data", {}).get("channel", {}).get("service", "").lower()
@@ -425,15 +465,8 @@ def post_to_buffer(video_url, video_title, caption):
     mutation = """
     mutation CreatePost($input: CreatePostInput!) {
       createPost(input: $input) {
-        ... on PostActionSuccess {
-          post {
-            id
-            status
-          }
-        }
-        ... on MutationError {
-          message
-        }
+        ... on PostActionSuccess { post { id status } }
+        ... on MutationError { message }
       }
     }
     """
@@ -449,14 +482,9 @@ def post_to_buffer(video_url, video_title, caption):
         }
 
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
-            post_input["metadata"] = {"youtube": {"title": video_title, "categoryId": "27"}}
+            post_input["metadata"] = {"youtube": {"title": video_title[:100], "categoryId": "27"}}
         elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
-            post_input["metadata"] = {
-                "instagram": {
-                    "type": "reel",
-                    "shouldShareToFeed": True
-                }
-            }
+            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
         try:
             res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
@@ -486,31 +514,46 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء إنتاج فيديو القرآن المتزامن (Trending Reciters Pool) ===", flush=True)
-    item = random.choice(QURAN_PLAYLIST)
+    print("=== بدء إنتاج فيديو القرآن الفيروسي (الجيل الجديد 8D + صيدلية المشاعر) ===", flush=True)
+    emotion_item = random.choice(EMOTIONAL_PHARMACY)
     reciter_info = random.choice(RECITERS_POOL)
     watermark_handle = os.getenv("WATERMARK_HANDLE", "@quran_reels").strip()
     selected_pinned_comment = random.choice(PINNED_COMMENTS)
 
-    notify_telegram(f"🎬 جاري إنتاج ريلز متزامن:\nسورة {item['name']} بصوت القارئ {reciter_info['name']} ({reciter_info['tone']})...")
+    notify_telegram(
+        f"🎬 جاري إنتاج ريلز استثنائي:\n"
+        f"• {emotion_item['badge']}\n"
+        f"• سورة {emotion_item['name']} بصوت {reciter_info['name']} (8D Audio + المطر والذهب)..."
+    )
 
     ayahs, s_name, a_range, r_name = fetch_ayahs_data(
-        item["surah"], item["start"], item["end"], reciter_info["id"], reciter_info["name"]
+        emotion_item["surah"], emotion_item["start"], emotion_item["end"],
+        reciter_info["id"], reciter_info["name"]
     )
 
     download_scenic_nature_video()
-    build_synchronized_video(ayahs, watermark_handle)
+    build_advanced_quran_video(ayahs, emotion_item, watermark_handle)
     pub_url = upload_video_to_github_release()
 
-    video_title, full_caption = build_seo_metadata(s_name, a_range, reciter_info, item["surah"])
+    video_title = f"{emotion_item['hook']} | سورة {s_name} بصوت {r_name} (8D)"[:100]
+    full_caption = (
+        f"{emotion_item['hook']}\n\n"
+        f"📖 سورة {s_name} ({a_range})\n"
+        f"🎙️ القارئ: {r_name} (تلاوة 8D بالسماعات 🎧)\n"
+        f"📁 {emotion_item['playlist']}\n\n"
+        f"ضع إعجاباً وشاركها لعلها تريح قلباً متعباً الآن 🤍\n\n"
+        f"#تلاوة_8d #راحة_نفسية #صيدلية_المشاعر #سورة_{s_name.replace(' ', '_')} "
+        f"#{r_name.replace(' ', '_')} #quran #fyp #explore #reels #shorts"
+    )
+
     post_to_buffer(pub_url, video_title, full_caption)
 
     tg_report = (
-        f"✨ تم النشر بنجاح على جميع المنصات!\n"
+        f"✨ تم النشر بنجاح على جميع المنصات بنظام الـ 8D والذهب!\n"
         f"العنوان: {video_title}\n"
         f"الرابط: {pub_url}\n\n"
         f"📌 التعليق التفاعلي للتثبيت:\n"
         f"<code>{selected_pinned_comment}</code>"
     )
     notify_telegram(tg_report)
-    print("=== اكتمل خط الإنتاج بنجاح ===", flush=True)
+    print("=== اكتمل خط الإنتاج الفيروسي بنجاح ===", flush=True)
