@@ -11,20 +11,20 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip, concatenate_audioclips
 )
 
-# باقة مختارة: من 3 آيات كحد أدنى إلى سور كاملة متناسقة للريلز والشورتس
+# قائمة السور والمقاطع (من 3 آيات كحد أدنى إلى سورة كاملة)
 QURAN_PLAYLIST = [
-    {"surah": 108, "start": 1, "end": 3, "name": "الكوثر"},  # سورة كاملة (3 آيات)
-    {"surah": 103, "start": 1, "end": 3, "name": "العصر"},   # سورة كاملة (3 آيات)
-    {"surah": 112, "start": 1, "end": 4, "name": "الإخلاص"}, # سورة كاملة (4 آيات)
-    {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},   # سورة كاملة (5 آيات)
-    {"surah": 114, "start": 1, "end": 6, "name": "الناس"},   # سورة كاملة (6 آيات)
-    {"surah": 97,  "start": 1, "end": 5, "name": "القدر"},   # سورة كاملة (5 آيات)
-    {"surah": 94,  "start": 1, "end": 8, "name": "الشرح"},   # سورة كاملة (8 آيات)
-    {"surah": 95,  "start": 1, "end": 8, "name": "التين"},   # سورة كاملة (8 آيات)
-    {"surah": 1,   "start": 1, "end": 7, "name": "الفاتحة"}, # سورة كاملة (7 آيات)
-    {"surah": 67,  "start": 1, "end": 4, "name": "الملك"},   # 4 آيات
-    {"surah": 55,  "start": 1, "end": 5, "name": "الرحمن"},  # 5 آيات
-    {"surah": 93,  "start": 1, "end": 5, "name": "الضحى"}    # 5 آيات
+    {"surah": 108, "start": 1, "end": 3, "name": "الكوثر"},
+    {"surah": 103, "start": 1, "end": 3, "name": "العصر"},
+    {"surah": 112, "start": 1, "end": 4, "name": "الإخلاص"},
+    {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},
+    {"surah": 114, "start": 1, "end": 6, "name": "الناس"},
+    {"surah": 97,  "start": 1, "end": 5, "name": "القدر"},
+    {"surah": 94,  "start": 1, "end": 8, "name": "الشرح"},
+    {"surah": 95,  "start": 1, "end": 8, "name": "التين"},
+    {"surah": 1,   "start": 1, "end": 7, "name": "الفاتحة"},
+    {"surah": 67,  "start": 1, "end": 4, "name": "الملك"},
+    {"surah": 55,  "start": 1, "end": 5, "name": "الرحمن"},
+    {"surah": 93,  "start": 1, "end": 5, "name": "الضحى"}
 ]
 
 RECITERS_POOL = [
@@ -34,10 +34,75 @@ RECITERS_POOL = [
     ("ar.minshawi", "محمد صديق المنشاوي")
 ]
 
+# السلاسل الموضوعية والكلمات المفتاحية المستهدفة (SEO)
+THEMATIC_SERIES = {
+    "سكينة": {
+        "tag": "#سلسلة_سكينة_القلب",
+        "playlist": "سكينة وهدوء القلب",
+        "hooks": [
+            "تلاوة تريح القلب وتزيل الهم والضيق 🌿",
+            "أرح مسمعك ونفسك بآيات الله والسكينة 🤍",
+            "سكينة تغمر الروح وهدوء للبال 🕊️"
+        ]
+    },
+    "نوم": {
+        "tag": "#سلسلة_تلاوات_النوم",
+        "playlist": "رفيق النوم والسكينة",
+        "hooks": [
+            "أنزل السكينة على روحك قبل أن تنام 🌙",
+            "تلاوة هادئة تعينك على نوم عميق ومطمئن 🕊️",
+            "أرح سمعك وقلبك قبل المنام بآيات الله 🤍"
+        ]
+    },
+    "قصار": {
+        "tag": "#سلسلة_قصار_السور",
+        "playlist": "قصار السور كاملة",
+        "hooks": [
+            "دقيقة من الطمأنينة لا تفوتها 🤍",
+            "استمع بقلبك لقصار السور بتلاوة خاشعة 🌿",
+            "تلاوة مباركة تملأ يومك بالبركة والراحة 🕊️"
+        ]
+    },
+    "فجر": {
+        "tag": "#سلسلة_آيات_الفجر",
+        "playlist": "آيات الفجر والبركة",
+        "hooks": [
+            "بداية يوم مطمئنة ومباركة بآيات الله 🕊️",
+            "آيات تفتح لك أبواب الرزق والطمأنينة مع الفجر 🌿"
+        ]
+    }
+}
+
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
+def build_seo_metadata(surah_name, ayah_range, reciter_name, surah_num):
+    """توليد عناوين ووصف جذاب يستهدف نيات البحث الشائعة"""
+    if surah_num == 67:
+        theme = THEMATIC_SERIES["نوم"]
+        intent_title = f"تلاوة للنوم العميق وراحة القلب 🌙 سورة {surah_name} ({ayah_range}) بصوت {reciter_name}"
+    elif surah_num == 93:
+        theme = THEMATIC_SERIES["فجر"]
+        intent_title = f"آيات تفتح لك أبواب الخير والرزق 🕊️ سورة {surah_name} بصوت {reciter_name}"
+    elif surah_num in [1, 94, 55]:
+        theme = THEMATIC_SERIES["سكينة"]
+        intent_title = f"تلاوة تريح القلب وتزيل الهم 🌿 سورة {surah_name} كاملة | {reciter_name}"
+    else:
+        theme = THEMATIC_SERIES["قصار"]
+        intent_title = f"قصار السور لراحة البال 🤍 سورة {surah_name} كاملة | القارئ {reciter_name}"
+
+    hook = random.choice(theme["hooks"])
+    caption = (
+        f"{hook}\n\n"
+        f"📖 سورة {surah_name} ({ayah_range})\n"
+        f"🎙️ القارئ: {reciter_name}\n"
+        f"📁 {theme['playlist']}\n\n"
+        f"شاركها لعلها تريح قلباً متعباً وتكون لك صدقة جارية 🤍\n\n"
+        f"{theme['tag']} #تلاوة_تريح_القلب #راحة_نفسية #قرآن #سورة_{surah_name.replace(' ', '_')} "
+        f"#quran #islamic_reels #fyp #explore #shorts"
+    )
+    return intent_title[:100], caption
+
 def get_font_base64():
-    """تحميل خط المصحف الشريف Amiri Bold وتضمينه لمنع أي تشوه في الحروف"""
     font_path = "Amiri-Bold.ttf"
     if not os.path.exists(font_path) or os.path.getsize(font_path) < 40000:
         try:
@@ -53,7 +118,6 @@ def get_font_base64():
     return ""
 
 def get_chrome_path():
-    """تحديد مسار متصفح Chrome في سيرفرات GitHub لضمان المعالجة الاحترافية"""
     candidates = ["google-chrome", "google-chrome-stable", "chromium-browser", "chromium"]
     for c in candidates:
         p = shutil.which(c)
@@ -67,7 +131,6 @@ def get_chrome_path():
     return "google-chrome"
 
 def clean_arabic_text(text):
-    """تنظيف علامات الوقف العثمانية الزائدة لضمان اتصال الحروف بنسبة 100%"""
     bad_symbols = [
         '۝', '۞', 'ۚ', 'ۖ', 'ۗ', 'ۘ', 'ۛ', 'ۜ', 
         '\u06dd', '\u06de', '\u06d6', '\u06d7', '\u06d8', '\u06d9', 
@@ -115,7 +178,6 @@ def fetch_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id, reciter_name):
     return ayahs_list, surah_name, ayah_range, reciter_name
 
 def download_scenic_nature_video():
-    """جلب لقطات درون عمودية هادئة للطبيعة والجبال من Pexels"""
     print("تنزيل خلفية طبيعة سينمائية من Pexels...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
@@ -146,7 +208,6 @@ def download_scenic_nature_video():
     return "bg_video.mp4"
 
 def render_quran_ayah_image(text, index, font_b64):
-    """رسم الآية بمحرك المتصفح لضمان اتصال الحروف العربية بنسبة 100% وظهور التشكيل والظل بدقة"""
     chrome_bin = get_chrome_path()
 
     words_count = len(text.split())
@@ -265,7 +326,6 @@ def build_synchronized_video(ayahs_list):
         bg_clip = bg_clip.subclip(0, total_duration)
 
     bg_clip = bg_clip.resize((1080, 1920))
-
     dim_overlay = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.20).set_duration(total_duration)
 
     final = CompositeVideoClip([bg_clip, dim_overlay] + text_overlay_clips).set_audio(final_audio)
@@ -313,7 +373,7 @@ def get_channel_service(ch_id, headers, graphql_url):
     except Exception:
         return ""
 
-def post_to_buffer(video_url, surah_name, ayah_range, reciter_name):
+def post_to_buffer(video_url, video_title, caption):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
 
@@ -322,15 +382,6 @@ def post_to_buffer(video_url, surah_name, ayah_range, reciter_name):
         return
 
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
-    caption = (
-        f"سورة {surah_name} 🤍 (الآيات {ayah_range})\n"
-        f"القارئ: {reciter_name}\n\n"
-        f"أرح قلبك ومسمعك بآيات الله 🌿\n\n"
-        f"#قرآن #تلاوة_خاشعة #راحة_نفسية #سورة_{surah_name.replace(' ', '_')} "
-        f"#{reciter_name.replace(' ', '_')} #quran #fyp #explore #reels #shorts"
-    )
-    video_title = f"سورة {surah_name} ({ayah_range}) | تلاوة خاشعة بصوت {reciter_name}"
-
     graphql_url = "https://api.buffer.com"
     headers = {"Authorization": f"Bearer {buffer_token}", "Content-Type": "application/json"}
 
@@ -361,7 +412,7 @@ def post_to_buffer(video_url, surah_name, ayah_range, reciter_name):
         }
 
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
-            post_input["metadata"] = {"youtube": {"title": video_title[:100], "categoryId": "27"}}
+            post_input["metadata"] = {"youtube": {"title": video_title, "categoryId": "27"}}
         elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
             post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
@@ -393,11 +444,11 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء إنتاج فيديو القرآن المتزامن الاحترافي ===", flush=True)
+    print("=== بدء إنتاج فيديو القرآن المتزامن الاحترافي (SEO & Playlists) ===", flush=True)
     item = random.choice(QURAN_PLAYLIST)
     rec = random.choice(RECITERS_POOL)
 
-    notify_telegram(f"🎬 جاري إنتاج ريلز متزامن آية بآية:\nسورة {item['name']} ({item['start']}-{item['end']}) بصوت {rec[1]}...")
+    notify_telegram(f"🎬 جاري إنتاج ريلز متزامن:\nسورة {item['name']} ({item['start']}-{item['end']}) بصوت {rec[1]}...")
 
     ayahs, s_name, a_range, r_name = fetch_ayahs_data(
         item["surah"], item["start"], item["end"], rec[0], rec[1]
@@ -407,7 +458,8 @@ if __name__ == "__main__":
     build_synchronized_video(ayahs)
     pub_url = upload_video_to_github_release()
 
-    post_to_buffer(pub_url, s_name, a_range, r_name)
+    video_title, full_caption = build_seo_metadata(s_name, a_range, r_name, item["surah"])
+    post_to_buffer(pub_url, video_title, full_caption)
 
-    notify_telegram(f"✨ تم النشر بنجاح!\nسورة {s_name} ({a_range})\nالرابط: {pub_url}")
+    notify_telegram(f"✨ تم النشر بنجاح!\nالعنوان: {video_title}\nالرابط: {pub_url}")
     print("=== اكتمل النشر بنجاح ===", flush=True)
