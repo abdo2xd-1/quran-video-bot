@@ -73,10 +73,17 @@ THEMATIC_SERIES = {
     }
 }
 
+# بنك التعليقات التفاعلية المحفزة للتثبيت (Pinned Comments Bank)
+PINNED_COMMENTS = [
+    "اكتب شيئاً تؤجر عليه في ميزان حسناتك 🌿 (سبحان الله، الحمد لله، لا إله إلا الله، الله أكبر) 🤍",
+    "شارك الآية لعلها تريح قلباً متعباً الآن وتكون لك صدقة جارية يوم القيامة 🕊️",
+    "ما هي أكثر آية تشعرك بالسكينة والطمأنينة عندما تسمعها؟ شاركنا بها في التعليقات 🤍",
+    "اللهم اجعل القرآن الكريم ربيع قلوبنا، ونور صدورنا، وجلاء أحزاننا وذهاب همومنا 🤲"
+]
+
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
 def build_seo_metadata(surah_name, ayah_range, reciter_name, surah_num):
-    """توليد عناوين ووصف جذاب يستهدف نيات البحث الشائعة"""
     if surah_num == 67:
         theme = THEMATIC_SERIES["نوم"]
         intent_title = f"تلاوة للنوم العميق وراحة القلب 🌙 سورة {surah_name} ({ayah_range}) بصوت {reciter_name}"
@@ -207,7 +214,7 @@ def download_scenic_nature_video():
 
     return "bg_video.mp4"
 
-def render_quran_ayah_image(text, index, font_b64):
+def render_quran_ayah_image(text, index, font_b64, watermark_handle):
     chrome_bin = get_chrome_path()
 
     words_count = len(text.split())
@@ -242,6 +249,7 @@ def render_quran_ayah_image(text, index, font_b64):
     justify-content: center;
     align-items: center;
     overflow: hidden;
+    position: relative;
   }}
   .ayah-text {{
     direction: rtl;
@@ -257,10 +265,23 @@ def render_quran_ayah_image(text, index, font_b64):
       0 4px 18px rgba(0, 0, 0, 0.9),
       0 0 30px rgba(0, 0, 0, 0.85);
   }}
+  .watermark {{
+    position: absolute;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'AmiriQuran', sans-serif;
+    font-size: 25px;
+    color: rgba(255, 255, 255, 0.45);
+    letter-spacing: 2px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+    direction: ltr;
+  }}
 </style>
 </head>
 <body>
   <div class="ayah-text">{text}</div>
+  <div class="watermark">{watermark_handle}</div>
 </body>
 </html>"""
 
@@ -293,8 +314,8 @@ def render_quran_ayah_image(text, index, font_b64):
 
     return png_filename
 
-def build_synchronized_video(ayahs_list):
-    print("مونتاج الفيديو وتزامن ظهور كل آية مع تلاوتها الصوتية...", flush=True)
+def build_synchronized_video(ayahs_list, watermark_handle):
+    print("مونتاج الفيديو وإدماج العلامة المائية في Safe Zone...", flush=True)
     font_b64 = get_font_base64()
 
     audio_clips = []
@@ -306,7 +327,7 @@ def build_synchronized_video(ayahs_list):
         duration = a_clip.duration
         audio_clips.append(a_clip)
 
-        img_path = render_quran_ayah_image(ayah["text"], idx, font_b64)
+        img_path = render_quran_ayah_image(ayah["text"], idx, font_b64, watermark_handle)
         t_clip = (
             ImageClip(img_path)
             .set_start(current_time)
@@ -373,7 +394,7 @@ def get_channel_service(ch_id, headers, graphql_url):
     except Exception:
         return ""
 
-def post_to_buffer(video_url, video_title, caption):
+def post_to_buffer(video_url, video_title, caption, pinned_comment):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
 
@@ -414,7 +435,13 @@ def post_to_buffer(video_url, video_title, caption):
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             post_input["metadata"] = {"youtube": {"title": video_title, "categoryId": "27"}}
         elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
-            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
+            post_input["metadata"] = {
+                "instagram": {
+                    "type": "reel",
+                    "shouldShareToFeed": True,
+                    "firstComment": pinned_comment
+                }
+            }
 
         try:
             res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
@@ -424,6 +451,12 @@ def post_to_buffer(video_url, video_title, caption):
                 err_msg = data['errors'][0].get('message', str(data['errors']))
             elif "data" in data and data.get("data", {}).get("createPost", {}).get("message"):
                 err_msg = data['data']['createPost']['message']
+
+            # معالجة استثنائية إذا كانت القناة لا تدعم firstComment مجاناً
+            if "firstComment" in err_msg and "metadata" in post_input and "instagram" in post_input["metadata"]:
+                post_input["metadata"]["instagram"].pop("firstComment", None)
+                res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
+                err_msg = res.json().get("data", {}).get("createPost", {}).get("message", "")
 
             if err_msg:
                 print(f"⚠️ رد القناة {ch_id}: {err_msg}", flush=True)
@@ -444,9 +477,11 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء إنتاج فيديو القرآن المتزامن الاحترافي (SEO & Playlists) ===", flush=True)
+    print("=== بدء إنتاج فيديو القرآن المتزامن الاحترافي (Full Brand & Engagement) ===", flush=True)
     item = random.choice(QURAN_PLAYLIST)
     rec = random.choice(RECITERS_POOL)
+    watermark_handle = os.getenv("WATERMARK_HANDLE", "@quran_reels").strip()
+    selected_pinned_comment = random.choice(PINNED_COMMENTS)
 
     notify_telegram(f"🎬 جاري إنتاج ريلز متزامن:\nسورة {item['name']} ({item['start']}-{item['end']}) بصوت {rec[1]}...")
 
@@ -455,11 +490,20 @@ if __name__ == "__main__":
     )
 
     download_scenic_nature_video()
-    build_synchronized_video(ayahs)
+    build_synchronized_video(ayahs, watermark_handle)
     pub_url = upload_video_to_github_release()
 
     video_title, full_caption = build_seo_metadata(s_name, a_range, r_name, item["surah"])
-    post_to_buffer(pub_url, video_title, full_caption)
+    post_to_buffer(pub_url, video_title, full_caption, selected_pinned_comment)
 
-    notify_telegram(f"✨ تم النشر بنجاح!\nالعنوان: {video_title}\nالرابط: {pub_url}")
-    print("=== اكتمل النشر بنجاح ===", flush=True)
+    # إرسال إشعار متكامل مع التعليق التفاعلي الجاهز للنسخ
+    tg_report = (
+        f"✨ تم النشر بنجاح على جميع المنصات!\n"
+        f"العنوان: {video_title}\n"
+        f"الرابط: {pub_url}\n\n"
+        f"📌 التعليق التفاعلي للتثبيت (Pinned Comment):\n"
+        f"<code>{selected_pinned_comment}</code>\n\n"
+        f"💡 انسخ التعليق أعلاه وثبته في أول تعليق على تيك توك ويوتيوب شورتس لزيادة التفاعل!"
+    )
+    notify_telegram(tg_report)
+    print("=== اكتمل خط الإنتاج بنجاح ===", flush=True)
