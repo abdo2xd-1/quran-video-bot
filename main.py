@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import time
+import uuid
 import base64
 import random
 import shutil
@@ -366,68 +368,71 @@ def build_advanced_quran_video(ayahs_list, emotional_item, watermark_handle):
     final.write_videofile("final_reel.mp4", fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
     return "final_reel.mp4"
 
-# ----------------- 8. نظام الرفع المحمي ضد الأخطاء (مع خوادم CDN بديلة) -----------------
-def upload_to_catbox(file_path):
-    """خادم احتياطي مجاني فائق السرعة يعطي رابط مباشر دائم للملف"""
+# ----------------- 8. نظام الرفع الخارق (GitHub Releases مع UUID وTmpFiles CDN) -----------------
+def upload_to_tmpfiles(file_path):
+    """رفع مباشر وسريع جداً على سيرفرات TmpFiles CDN المتوافقة مع Buffer"""
     try:
-        print("الرفع الاحتياطي عبر خادم Catbox المباشر...", flush=True)
+        print("الرفع الاحتياطي المباشر عبر TmpFiles CDN...", flush=True)
         with open(file_path, "rb") as f:
-            res = requests.post(
-                "https://catbox.moe/user/api.php",
-                data={"reqtype": "fileupload"},
-                files={"fileToUpload": f},
-                timeout=60
-            )
-        if res.status_code == 200 and res.text.startswith("http"):
-            return res.text.strip()
+            res = requests.post("https://tmpfiles.org/api/v1/upload", files={"file": f}, timeout=60).json()
+            if res.get("status") == "success":
+                raw_url = res["data"]["url"]
+                # تحويل الرابط إلى رابط تنزيل مباشر لـ Buffer
+                direct_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                print(f"✅ تم الرفع المباشر: {direct_url}", flush=True)
+                return direct_url
     except Exception as e:
-        print(f"Catbox upload error: {e}", flush=True)
+        print(f"TmpFiles error: {e}", flush=True)
     return None
 
 def upload_files_to_github_release(video_file="final_reel.mp4", cover_file="cover.jpg"):
     print("محاولة الرفع إلى GitHub Releases...", flush=True)
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
-    tag_name = f"reel-{int(random.random()*1000000000)}"
 
     if repo and gh_token:
-        create_url = f"https://api.github.com/repos/{repo}/releases"
-        headers = {"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"}
-        rel_data = {"tag_name": tag_name, "name": f"Reel Release {tag_name}", "draft": False, "prerelease": False}
-        try:
-            res = requests.post(create_url, headers=headers, json=rel_data, timeout=20).json()
-            if "upload_url" in res:
-                upload_url = res["upload_url"].split("{")[0]
-                with open(video_file, "rb") as f:
-                    up_res = requests.post(
-                        f"{upload_url}?name=final_reel.mp4",
-                        headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"},
-                        data=f, timeout=60
-                    ).json()
-                pub_url = up_res.get("browser_download_url")
+        # محاولة إنشاء Release بتاج فريد تماماً (توقيت بالمللي ثانية + UUID مشفر)
+        for attempt in range(3):
+            unique_id = f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}"
+            tag_name = f"v{unique_id}"
+            create_url = f"https://api.github.com/repos/{repo}/releases"
+            headers = {"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"}
+            rel_data = {"tag_name": tag_name, "name": f"Release {tag_name}", "draft": False, "prerelease": False}
 
-                if os.path.exists(cover_file):
-                    with open(cover_file, "rb") as f_cov:
-                        requests.post(
-                            f"{upload_url}?name=cover.jpg",
-                            headers={"Authorization": f"token {gh_token}", "Content-Type": "image/jpeg"},
-                            data=f_cov, timeout=30
-                        )
-                if pub_url:
-                    print(f"✅ تم الرفع بنجاح عبر GitHub Release: {pub_url}", flush=True)
-                    return pub_url
-            else:
-                print(f"⚠️ تنبيه من GitHub API (صلاحيات القراءة فقط): {res}", flush=True)
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء محاولة الرفع لـ GitHub: {e}", flush=True)
+            try:
+                res = requests.post(create_url, headers=headers, json=rel_data, timeout=20).json()
+                if "upload_url" in res:
+                    upload_url = res["upload_url"].split("{")[0]
+                    with open(video_file, "rb") as f:
+                        up_res = requests.post(
+                            f"{upload_url}?name=final_reel.mp4",
+                            headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"},
+                            data=f, timeout=60
+                        ).json()
+                    pub_url = up_res.get("browser_download_url")
 
-    # إذا فشل GitHub Release لأي سبب، يتم الرفع فوراً عبر Catbox البديل
-    fallback_url = upload_to_catbox(video_file)
-    if fallback_url:
-        print(f"✅ تم رفع الفيديو بنجاح عبر السيرفر البديل: {fallback_url}", flush=True)
-        return fallback_url
+                    if os.path.exists(cover_file):
+                        with open(cover_file, "rb") as f_cov:
+                            requests.post(
+                                f"{upload_url}?name=cover.jpg",
+                                headers={"Authorization": f"token {gh_token}", "Content-Type": "image/jpeg"},
+                                data=f_cov, timeout=30
+                            )
+                    if pub_url:
+                        print(f"✅ تم الرفع بنجاح عبر GitHub Release: {pub_url}", flush=True)
+                        return pub_url
+                else:
+                    print(f"⚠️ محاولة {attempt+1}: رد GitHub API: {res.get('message')}", flush=True)
+                    time.sleep(1)
+            except Exception as e:
+                print(f"خطأ محاولة {attempt+1}: {e}", flush=True)
 
-    raise RuntimeError("تعذر رفع الفيديو عبر GitHub Release أو السيرفر البديل.")
+    # إذا تعذر الرفع عبر GitHub Releases، يتم الرفع فوراً عبر TmpFiles CDN
+    cdn_url = upload_to_tmpfiles(video_file)
+    if cdn_url:
+        return cdn_url
+
+    raise RuntimeError("تعذر رفع الفيديو عبر GitHub Release وسيرفرات CDN.")
 
 def get_channel_service(ch_id, headers, graphql_url):
     query = """query GetChannel($input: ChannelInput!) { channel(input: $input) { service } }"""
@@ -467,7 +472,7 @@ def post_to_buffer(video_url, s_name, emotional_badge, caption):
             "assets": [{"video": {"url": video_url}}]
         }
 
-        # عنوان يوتيوب القصير الآمن تماماً
+        # عنوان يوتيوب القصير المقبول فورياً
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             yt_clean_title = f"{emotional_badge[:28]} | سورة {s_name} 🤍 #shorts"[:60]
             post_input["metadata"] = {
