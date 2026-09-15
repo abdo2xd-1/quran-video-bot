@@ -34,7 +34,6 @@ RECITERS_POOL = [
     ("ar.minshawi", "محمد صديق المنشاوي")
 ]
 
-# السلاسل الموضوعية والكلمات المفتاحية المستهدفة (SEO)
 THEMATIC_SERIES = {
     "سكينة": {
         "tag": "#سلسلة_سكينة_القلب",
@@ -73,7 +72,6 @@ THEMATIC_SERIES = {
     }
 }
 
-# بنك التعليقات التفاعلية المحفزة للتثبيت (Pinned Comments Bank)
 PINNED_COMMENTS = [
     "اكتب شيئاً تؤجر عليه في ميزان حسناتك 🌿 (سبحان الله، الحمد لله، لا إله إلا الله، الله أكبر) 🤍",
     "شارك الآية لعلها تريح قلباً متعباً الآن وتكون لك صدقة جارية يوم القيامة 🕊️",
@@ -116,8 +114,8 @@ def get_font_base64():
             r = requests.get(FONT_URL, timeout=20)
             with open(font_path, "wb") as f:
                 f.write(r.content)
-        except Exception as e:
-            print(f"Font download warning: {e}", flush=True)
+        except Exception:
+            pass
 
     if os.path.exists(font_path):
         with open(font_path, "rb") as f:
@@ -394,7 +392,7 @@ def get_channel_service(ch_id, headers, graphql_url):
     except Exception:
         return ""
 
-def post_to_buffer(video_url, video_title, caption, pinned_comment):
+def post_to_buffer(video_url, video_title, caption):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
 
@@ -432,14 +430,14 @@ def post_to_buffer(video_url, video_title, caption, pinned_comment):
             "assets": [{"video": {"url": video_url}}]
         }
 
+        # ضبط متطلبات كل منصة بدون firstComment لتجنب قيود الخطة المجانية
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             post_input["metadata"] = {"youtube": {"title": video_title, "categoryId": "27"}}
         elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
             post_input["metadata"] = {
                 "instagram": {
                     "type": "reel",
-                    "shouldShareToFeed": True,
-                    "firstComment": pinned_comment
+                    "shouldShareToFeed": True
                 }
             }
 
@@ -451,12 +449,6 @@ def post_to_buffer(video_url, video_title, caption, pinned_comment):
                 err_msg = data['errors'][0].get('message', str(data['errors']))
             elif "data" in data and data.get("data", {}).get("createPost", {}).get("message"):
                 err_msg = data['data']['createPost']['message']
-
-            # معالجة استثنائية إذا كانت القناة لا تدعم firstComment مجاناً
-            if "firstComment" in err_msg and "metadata" in post_input and "instagram" in post_input["metadata"]:
-                post_input["metadata"]["instagram"].pop("firstComment", None)
-                res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
-                err_msg = res.json().get("data", {}).get("createPost", {}).get("message", "")
 
             if err_msg:
                 print(f"⚠️ رد القناة {ch_id}: {err_msg}", flush=True)
@@ -477,7 +469,7 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء إنتاج فيديو القرآن المتزامن الاحترافي (Full Brand & Engagement) ===", flush=True)
+    print("=== بدء إنتاج فيديو القرآن المتزامن الاحترافي ===", flush=True)
     item = random.choice(QURAN_PLAYLIST)
     rec = random.choice(RECITERS_POOL)
     watermark_handle = os.getenv("WATERMARK_HANDLE", "@quran_reels").strip()
@@ -494,16 +486,14 @@ if __name__ == "__main__":
     pub_url = upload_video_to_github_release()
 
     video_title, full_caption = build_seo_metadata(s_name, a_range, r_name, item["surah"])
-    post_to_buffer(pub_url, video_title, full_caption, selected_pinned_comment)
+    post_to_buffer(pub_url, video_title, full_caption)
 
-    # إرسال إشعار متكامل مع التعليق التفاعلي الجاهز للنسخ
     tg_report = (
-        f"✨ تم النشر بنجاح على جميع المنصات!\n"
+        f"✨ تم النشر بنجاح على المنصات الثلاث!\n"
         f"العنوان: {video_title}\n"
         f"الرابط: {pub_url}\n\n"
-        f"📌 التعليق التفاعلي للتثبيت (Pinned Comment):\n"
-        f"<code>{selected_pinned_comment}</code>\n\n"
-        f"💡 انسخ التعليق أعلاه وثبته في أول تعليق على تيك توك ويوتيوب شورتس لزيادة التفاعل!"
+        f"📌 التعليق التفاعلي للتثبيت:\n"
+        f"<code>{selected_pinned_comment}</code>"
     )
     notify_telegram(tg_report)
     print("=== اكتمل خط الإنتاج بنجاح ===", flush=True)
