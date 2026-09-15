@@ -19,25 +19,29 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip, concatenate_audioclips
 )
 
-# ----------------- الإعدادات والمصادر -----------------
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 ADMIN_ID = os.getenv("ADMIN_CHAT_ID", "").strip()
 STATS_FILE = "publish_history.json"
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
-# الإعدادات الافتراضية للوحة التحكم
+# الإعدادات الافتراضية
 CONFIG = {
-    "reciter_id": "ar.alafasy",
-    "reciter_name": "مشاري العفاسي",
+    "reciter_id": "Dussary_128kbps",
+    "reciter_name": "ياسر الدوسري",
     "theme_key": "mountains",
     "theme_name": "🏔️ جبال وأودية خضراء"
 }
 
+# قائمة القراء التفاعلية في تليجرام
 RECITERS = {
-    "alafasy": ("ar.alafasy", "مشاري العفاسي"),
-    "abdulbasit": ("ar.abdulbasitmurattal", "عبد الباسط عبد الصمد"),
-    "husary": ("ar.husary", "محمود خليل الحصري"),
-    "minshawi": ("ar.minshawi", "محمد صديق المنشاوي")
+    "dossari": ("Dussary_128kbps", "ياسر الدوسري"),
+    "qatami": ("Nasser_Alqatami_128kbps", "ناصر القطامي"),
+    "abbad": ("Fares_Abbad_64kbps", "فارس عباد"),
+    "muaiqly": ("MaherAlMuaiqly128kbps", "ماهر المعيقلي"),
+    "alafasy": ("Alafasy_128kbps", "مشاري العفاسي"),
+    "abdulbasit": ("Abdul_Basit_Murattal_192kbps", "عبد الباسط عبد الصمد"),
+    "minshawi": ("Minshawy_Murattal_128kbps", "محمد صديق المنشاوي"),
+    "ghamadi": ("Ghamadi_40kbps", "سعد الغامدي")
 }
 
 THEMES = {
@@ -74,31 +78,12 @@ QURAN_PLAYLIST = [
     {"surah": 93,  "start": 1, "end": 5, "name": "الضحى"}
 ]
 
-THEMATIC_SERIES = {
-    "سكينة": {
-        "tag": "#سلسلة_سكينة_القلب",
-        "playlist": "سكينة وهدوء القلب",
-        "hooks": ["تلاوة تريح القلب وتزيل الهم والضيق 🌿", "أرح مسمعك ونفسك بآيات الله والسكينة 🤍"]
-    },
-    "نوم": {
-        "tag": "#سلسلة_تلاوات_النوم",
-        "playlist": "رفيق النوم والسكينة",
-        "hooks": ["أنزل السكينة على روحك قبل أن تنام 🌙", "تلاوة هادئة تعينك على نوم عميق ومطمئن 🕊️"]
-    },
-    "قصار": {
-        "tag": "#سلسلة_قصار_السور",
-        "playlist": "قصار السور كاملة",
-        "hooks": ["دقيقة من الطمأنينة لا تفوتها 🤍", "استمع بقلبك لقصار السور بتلاوة خاشعة 🌿"]
-    }
-}
-
 PINNED_COMMENTS = [
     "اكتب شيئاً تؤجر عليه في ميزان حسناتك 🌿 (سبحان الله، الحمد لله، لا إله إلا الله، الله أكبر) 🤍",
     "شارك الآية لعلها تريح قلباً متعباً الآن وتكون لك صدقة جارية يوم القيامة 🕊️",
     "ما هي أكثر آية تشعرك بالسكينة والطمأنينة عندما تسمعها؟ شاركنا بها في التعليقات 🤍"
 ]
 
-# ----------------- إدارة السجلات والإحصائيات -----------------
 def log_publish_event(surah_name, ayah_range, reciter_name, release_url):
     today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
     history = {}
@@ -141,12 +126,11 @@ def get_stats_report():
     )
 
     if today_posts:
-        msg += "\n<b>آخر المقاطع المنشورة اليوم:</b>\n"
+        msg += "\n<b>آخر المقاطع المنشورة:</b>\n"
         for p in today_posts[-3:]:
             msg += f"• سورة {p['surah']} ({p['ayahs']}) - {p['reciter']} [<a href='{p['url']}'>مشاهدة</a>]\n"
     return msg
 
-# ----------------- دوال المونتاج والإنتاج -----------------
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
     if not os.path.exists(font_path) or os.path.getsize(font_path) < 40000:
@@ -194,24 +178,36 @@ def execute_pipeline(reciter_id, reciter_name, theme_key):
     item = random.choice(QURAN_PLAYLIST)
     watermark = os.getenv("WATERMARK_HANDLE", "@quran_reels").strip()
 
-    # 1. جلب الصوت والنصوص
     meta_url = f"https://api.alquran.cloud/v1/surah/{item['surah']}"
     surah_name = requests.get(meta_url, timeout=15).json().get("data", {}).get("name", f"سورة {item['surah']}")
     ayahs = []
 
     for a in range(item["start"], item["end"] + 1):
         t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{item['surah']}:{a}/quran-simple", timeout=15).json()
-        a_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{item['surah']}:{a}/{reciter_id}", timeout=15).json()
         txt = clean_arabic_text(t_res.get("data", {}).get("text", ""))
         if a == 1 and item["surah"] != 1:
             txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
-        aud_url = a_res.get("data", {}).get("audio")
+
+        surah_str = f"{item['surah']:03d}"
+        ayah_str = f"{a:03d}"
+        aud_url = f"https://everyayah.com/data/{reciter_id}/{surah_str}{ayah_str}.mp3"
         aud_name = f"aud_{a}.mp3"
-        with open(aud_name, "wb") as f:
-            f.write(requests.get(aud_url, timeout=25).content)
+        try:
+            r = requests.get(aud_url, timeout=25)
+            if r.status_code == 200 and len(r.content) > 3000:
+                with open(aud_name, "wb") as f:
+                    f.write(r.content)
+            else:
+                r_fb = requests.get(f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3", timeout=25)
+                with open(aud_name, "wb") as f:
+                    f.write(r_fb.content)
+        except Exception:
+            r_fb = requests.get(f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3", timeout=25)
+            with open(aud_name, "wb") as f:
+                f.write(r_fb.content)
+
         ayahs.append({"text": txt, "audio": aud_name})
 
-    # 2. تنزيل الخلفية حسب الثيم المختار
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     query = random.choice(THEMES[theme_key]["queries"])
     headers = {"Authorization": pexels_key} if pexels_key else {}
@@ -221,7 +217,6 @@ def execute_pipeline(reciter_id, reciter_name, theme_key):
     with open("bg.mp4", "wb") as f:
         f.write(requests.get(v_files[-1]["link"], timeout=35).content)
 
-    # 3. المونتاج المتزامن
     font_b64 = get_font_base64()
     audio_clips, text_clips = [], []
     curr_t = 0.0
@@ -244,7 +239,6 @@ def execute_pipeline(reciter_id, reciter_name, theme_key):
     out_file = "final_reel.mp4"
     final.write_videofile(out_file, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
 
-    # 4. الرفع إلى GitHub Release
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     tag = f"reel-{int(random.random()*1000000000)}"
@@ -260,9 +254,8 @@ def execute_pipeline(reciter_id, reciter_name, theme_key):
         up = requests.post(f"{upload_url}?name=final_reel.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=60).json()
     pub_url = up.get("browser_download_url")
 
-    # 5. بناء بيانات SEO والنشر عبر Buffer
     ayah_range = f"{item['start']}-{item['end']}"
-    title = f"تلاوة تريح القلب 🌿 سورة {surah_name} ({ayah_range}) بصوت {reciter_name}"[:100]
+    title = f"تلاوة تريح القلب 🌿 سورة {surah_name} ({ayah_range}) | {reciter_name}"[:100]
     caption = f"سورة {surah_name} 🤍 بصوت {reciter_name}\n\n#قرآن #تلاوات #fyp #explore"
     pinned_com = random.choice(PINNED_COMMENTS)
 
@@ -284,7 +277,6 @@ def execute_pipeline(reciter_id, reciter_name, theme_key):
     log_publish_event(surah_name, ayah_range, reciter_name, pub_url)
     return surah_name, ayah_range, pub_url, pinned_com
 
-# ----------------- واجهة لوحة التحكم في Telegram -----------------
 def build_main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"🎙️ القارئ: {CONFIG['reciter_name']}", callback_data="menu_reciters")],
@@ -296,7 +288,7 @@ def build_main_keyboard():
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "🎛️ <b>لوحة التحكم في خط إنتاج القرآن الكريم</b>\n\n"
-        "يمكنك ضبط خيارات المقطع القادم، أو الضغط على زر <b>النشر الفوري</b> لإنتاج ونشر مقطع جديد على الفور دون انتظار الجدول التلقائي:"
+        "اختر القارئ المفضل ونوع المشهد، أو اضغط على <b>الإنتاج الفوري</b> لنشر مقطع جديد على الفور عبر يوتيوب، إنستغرام، وتيك توك:"
     )
     await update.message.reply_text(msg, parse_mode="HTML", reply_markup=build_main_keyboard())
 
@@ -316,10 +308,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "menu_reciters":
-        buttons = [
-            [InlineKeyboardButton(f"{'✅ ' if CONFIG['reciter_id'] == v[0] else ''}{v[1]}", callback_data=f"set_rec_{k}")]
-            for k, v in RECITERS.items()
-        ]
+        buttons = []
+        rec_items = list(RECITERS.items())
+        # ترتيب الأزرار في صفين متجاورين لتنسيق مريح في تليجرام
+        for i in range(0, len(rec_items), 2):
+            row = []
+            k1, v1 = rec_items[i]
+            row.append(InlineKeyboardButton(f"{'✅ ' if CONFIG['reciter_id'] == v1[0] else ''}{v1[1]}", callback_data=f"set_rec_{k1}"))
+            if i + 1 < len(rec_items):
+                k2, v2 = rec_items[i+1]
+                row.append(InlineKeyboardButton(f"{'✅ ' if CONFIG['reciter_id'] == v2[0] else ''}{v2[1]}", callback_data=f"set_rec_{k2}"))
+            buttons.append(row)
         buttons.append([InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data="menu_main")])
         await query.edit_message_text("🎙️ <b>اختر القارئ المفضل للإنتاج:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
 
@@ -351,11 +350,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏳ <b>بدء الإنتاج الفوري...</b>\n"
             f"• القارئ: {CONFIG['reciter_name']}\n"
             f"• المشهد: {CONFIG['theme_name']}\n\n"
-            f"جاري جلب الآيات وتوليد الفيديو المتزامن بالكامل...",
+            f"جاري جلب الآيات والمونتاج المتزامن ونشر الفيديو...",
             parse_mode="HTML"
         )
         try:
-            # تشغيل المونتاج والرفع في Thread منفصل لعدم تجميد البوت
             s_name, a_range, pub_url, pinned_comment = await asyncio.to_thread(
                 execute_pipeline, CONFIG["reciter_id"], CONFIG["reciter_name"], CONFIG["theme_key"]
             )
@@ -364,20 +362,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ <b>تم إنتاج ونشر المقطع بنجاح!</b>\n\n"
                 f"📖 <b>السورة:</b> {s_name} ({a_range})\n"
                 f"🎙️ <b>القارئ:</b> {CONFIG['reciter_name']}\n"
-                f"🔗 <b>رابط الفيديو:</b> <a href='{pub_url}'>اضغط هنا للمشاهدة</a>\n\n"
+                f"🔗 <b>رابط الفيديو:</b> <a href='{pub_url}'>مشاهدة المقطع</a>\n\n"
                 f"📌 <b>التعليق المقترح للتثبيت:</b>\n"
                 f"<code>{pinned_comment}</code>"
             )
             await status_msg.edit_text(report, parse_mode="HTML", disable_web_page_preview=True)
 
-            # إرسال ملف الفيديو نفسه مباشرة في تليجرام للمعاينة
             if os.path.exists("final_reel.mp4"):
                 with open("final_reel.mp4", "rb") as vf:
-                    await query.message.reply_video(video=vf, caption=f"سورة {s_name} ({a_range}) 🌿")
+                    await query.message.reply_video(video=vf, caption=f"سورة {s_name} ({a_range}) - {CONFIG['reciter_name']} 🌿")
         except Exception as e:
             await status_msg.edit_text(f"❌ حدث خطأ أثناء الإنتاج: {e}")
 
-# ----------------- الدالة الرئيسية -----------------
 def main():
     if not BOT_TOKEN:
         print("خطأ: لم يتم ضبط TELEGRAM_BOT_TOKEN في Secrets!", flush=True)
@@ -388,7 +384,7 @@ def main():
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    print("🚀 تم تشغيل لوحة تحكم تليجرام التفاعلية بنجاح 24/7...", flush=True)
+    print("🚀 تم تشغيل لوحة التحكم مع مكتبة القراء الرائجة 24/7...", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
