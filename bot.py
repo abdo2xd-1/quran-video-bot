@@ -24,112 +24,44 @@ ADMIN_ID = os.getenv("ADMIN_CHAT_ID", "").strip()
 STATS_FILE = "publish_history.json"
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
-# الإعدادات الافتراضية
-CONFIG = {
-    "reciter_id": "Dussary_128kbps",
-    "reciter_name": "ياسر الدوسري",
-    "theme_key": "mountains",
-    "theme_name": "🏔️ جبال وأودية خضراء"
+# صيدلية المشاعر للمتابعين
+COMMUNITY_EMOTIONS = {
+    "emo_sadness": {
+        "title": "💔 حزين أو متعب الصدر",
+        "badge": "رسالة لقلبك إذا كنت حزيناً أو متعباً 🌿",
+        "hook": "إذا ضاقت بك الدنيا وتعب قلبك.. استمع لرسالة الله إليك 🤍",
+        "surah": 94, "start": 1, "end": 8, "name": "الشرح"
+    },
+    "emo_anxiety": {
+        "title": "🕊️ قلق من الرزق والمستقبل",
+        "badge": "إذا كنت قلقاً من المستقبل أو الرزق 🕊️",
+        "hook": "اطمئن على رزقك ومستقبلك.. الأمر كله بيد الله 🌿",
+        "surah": 65, "start": 2, "end": 3, "name": "الطلاق"
+    },
+    "emo_peace": {
+        "title": "🤍 أبحث عن السكينة والأمان",
+        "badge": "تلاوة تنزل السكينة والأمان على روحك 🤍",
+        "hook": "أرح سمعك وفؤادك من صخب الدنيا وضغوطها 🕊️",
+        "surah": 13, "start": 28, "end": 28, "name": "الرعد"
+    },
+    "emo_sleep": {
+        "title": "🌙 تلاوة هادئة للنوم العميق",
+        "badge": "أمان وحصن لقلبك قبل أن تغمض عينيك 🌙",
+        "hook": "تلاوة هادئة تعينك على نوم مطمئن وسكينة تامة 🕊️",
+        "surah": 67, "start": 1, "end": 4, "name": "الملك"
+    }
 }
 
-# قائمة القراء التفاعلية في تليجرام
-RECITERS = {
+RECITERS_DICT = {
     "dossari": ("Dussary_128kbps", "ياسر الدوسري"),
     "qatami": ("Nasser_Alqatami_128kbps", "ناصر القطامي"),
     "abbad": ("Fares_Abbad_64kbps", "فارس عباد"),
     "muaiqly": ("MaherAlMuaiqly128kbps", "ماهر المعيقلي"),
-    "alafasy": ("Alafasy_128kbps", "مشاري العفاسي"),
-    "abdulbasit": ("Abdul_Basit_Murattal_192kbps", "عبد الباسط عبد الصمد"),
-    "minshawi": ("Minshawy_Murattal_128kbps", "محمد صديق المنشاوي"),
-    "ghamadi": ("Ghamadi_40kbps", "سعد الغامدي")
+    "alafasy": ("Alafasy_128kbps", "مشاري العفاسي")
 }
 
-THEMES = {
-    "mountains": {
-        "name": "🏔️ جبال وأودية خضراء",
-        "queries": ["switzerland mountains drone vertical", "alps landscape sunny green valley", "nature green valley aerial 4k vertical"]
-    },
-    "clouds": {
-        "name": "☁️ سحاب وضباب ومطر",
-        "queries": ["foggy mountains dark clouds vertical", "misty forest rain cinematic vertical", "dark moody clouds nature vertical"]
-    },
-    "ocean": {
-        "name": "🌊 بحار وأمواج هادئة",
-        "queries": ["calm ocean waves sunset vertical", "dark moody sea water vertical", "beach waves aerial vertical"]
-    },
-    "snow": {
-        "name": "❄️ ثلوج وشتاء سينمائي",
-        "queries": ["winter snow mountains drone vertical", "pine trees snow aerial vertical", "falling snow forest moody vertical"]
-    }
-}
-
-QURAN_PLAYLIST = [
-    {"surah": 108, "start": 1, "end": 3, "name": "الكوثر"},
-    {"surah": 103, "start": 1, "end": 3, "name": "العصر"},
-    {"surah": 112, "start": 1, "end": 4, "name": "الإخلاص"},
-    {"surah": 113, "start": 1, "end": 5, "name": "الفلق"},
-    {"surah": 114, "start": 1, "end": 6, "name": "الناس"},
-    {"surah": 97,  "start": 1, "end": 5, "name": "القدر"},
-    {"surah": 94,  "start": 1, "end": 8, "name": "الشرح"},
-    {"surah": 95,  "start": 1, "end": 8, "name": "التين"},
-    {"surah": 1,   "start": 1, "end": 7, "name": "الفاتحة"},
-    {"surah": 67,  "start": 1, "end": 4, "name": "الملك"},
-    {"surah": 55,  "start": 1, "end": 5, "name": "الرحمن"},
-    {"surah": 93,  "start": 1, "end": 5, "name": "الضحى"}
-]
-
-PINNED_COMMENTS = [
-    "اكتب شيئاً تؤجر عليه في ميزان حسناتك 🌿 (سبحان الله، الحمد لله، لا إله إلا الله، الله أكبر) 🤍",
-    "شارك الآية لعلها تريح قلباً متعباً الآن وتكون لك صدقة جارية يوم القيامة 🕊️",
-    "ما هي أكثر آية تشعرك بالسكينة والطمأنينة عندما تسمعها؟ شاركنا بها في التعليقات 🤍"
-]
-
-def log_publish_event(surah_name, ayah_range, reciter_name, release_url):
-    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-    history = {}
-    if os.path.exists(STATS_FILE):
-        try:
-            with open(STATS_FILE, "r", encoding="utf-8") as f:
-                history = json.load(f)
-        except Exception:
-            history = {}
-
-    if today not in history:
-        history[today] = []
-
-    history[today].append({
-        "time": datetime.datetime.utcnow().strftime("%H:%M UTC"),
-        "surah": surah_name,
-        "ayahs": ayah_range,
-        "reciter": reciter_name,
-        "url": release_url
-    })
-
-    with open(STATS_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-
-def get_stats_report():
-    if not os.path.exists(STATS_FILE):
-        return "📊 لا توجد أي عمليات نشر مسجلة حتى الآن."
-
-    with open(STATS_FILE, "r", encoding="utf-8") as f:
-        history = json.load(f)
-
-    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-    today_posts = history.get(today, [])
-    total_all = sum(len(v) for v in history.values())
-
-    msg = (
-        f"📊 <b>إحصائيات النشر الآلي</b>\n\n"
-        f"📅 <b>اليوم ({today}):</b> {len(today_posts)} فيديو منشورة\n"
-        f"🌐 <b>إجمالي الفيديوهات المنتجة:</b> {total_all}\n"
-    )
-
-    if today_posts:
-        msg += "\n<b>آخر المقاطع المنشورة:</b>\n"
-        for p in today_posts[-3:]:
-            msg += f"• سورة {p['surah']} ({p['ayahs']}) - {p['reciter']} [<a href='{p['url']}'>مشاهدة</a>]\n"
-    return msg
+# جلسات المستخدمين المؤقتة
+USER_SESSIONS = {}
 
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
@@ -150,22 +82,34 @@ def clean_arabic_text(text):
         text = text.replace(sym, '')
     return text.strip()
 
-def render_quran_ayah_image(text, index, font_b64, watermark_handle):
+def render_word_frame(words, active_idx, badge, font_b64, watermark):
     chrome_bin = shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
-    words_count = len(text.split())
-    font_size = 72 if words_count <= 5 else (60 if words_count <= 12 else 48)
+    words_html = []
+    for i, w in enumerate(words):
+        if i == active_idx:
+            words_html.append(f'<span style="color:#D4AF37; transform:scale(1.08); text-shadow:0 0 15px rgba(212,175,55,0.9);">{w}</span>')
+        else:
+            words_html.append(f'<span style="color:#FFFFFF; text-shadow:0 0 10px rgba(0,0,0,0.95);">{w}</span>')
+
+    full_verse = " ".join(words_html)
+    font_size = 70 if len(words) <= 6 else 52
 
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
   @font-face {{ font-family: 'AmiriQuran'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ width: 1080px; height: 1920px; background: transparent; display: flex; justify-content: center; align-items: center; position: relative; }}
-  .ayah {{ direction: rtl; text-align: center; font-family: 'AmiriQuran'; font-size: {font_size}px; font-weight: bold; color: #fff; line-height: 1.85; max-width: 920px; text-shadow: 0 0 10px rgba(0,0,0,0.95), 0 4px 18px rgba(0,0,0,0.9); }}
-  .watermark {{ position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); font-family: 'AmiriQuran'; font-size: 25px; color: rgba(255,255,255,0.45); direction: ltr; }}
+  body {{ width: 1080px; height: 1920px; background: transparent; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }}
+  .badge {{ position: absolute; top: 190px; background: rgba(10,14,20,0.6); border: 1px solid rgba(212,175,55,0.45); color: #fff; font-family: 'AmiriQuran'; font-size: 26px; padding: 10px 28px; border-radius: 30px; }}
+  .ayah {{ direction: rtl; text-align: center; font-family: 'AmiriQuran'; font-size: {font_size}px; font-weight: bold; line-height: 1.95; max-width: 920px; margin: auto 0; }}
+  .watermark {{ position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); font-family: 'AmiriQuran'; font-size: 24px; color: rgba(255,255,255,0.45); direction: ltr; }}
 </style></head>
-<body><div class="ayah">{text}</div><div class="watermark">{watermark_handle}</div></body></html>"""
+<body>
+  <div class="badge">🎧 ضع السماعات • {badge}</div>
+  <div class="ayah">{full_verse}</div>
+  <div class="watermark">{watermark}</div>
+</body></html>"""
 
-    h_path, p_path = f"temp_{index}.html", f"ayah_{index}.png"
+    h_path, p_path = f"tmp_{active_idx}.html", f"frame_{active_idx}.png"
     with open(h_path, "w", encoding="utf-8") as f:
         f.write(html)
     cmd = [chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", "--default-background-color=00000000", f"--screenshot={os.path.abspath(p_path)}", f"file://{os.path.abspath(h_path)}"]
@@ -174,217 +118,158 @@ def render_quran_ayah_image(text, index, font_b64, watermark_handle):
         os.remove(h_path)
     return p_path
 
-def execute_pipeline(reciter_id, reciter_name, theme_key):
-    item = random.choice(QURAN_PLAYLIST)
-    watermark = os.getenv("WATERMARK_HANDLE", "@quran_reels").strip()
+def generate_custom_user_video(emotion_key, reciter_key, user_id):
+    emo = COMMUNITY_EMOTIONS[emotion_key]
+    rec_id, rec_name = RECITERS_DICT[reciter_key]
+    watermark = "@quran_reels"
 
-    meta_url = f"https://api.alquran.cloud/v1/surah/{item['surah']}"
-    surah_name = requests.get(meta_url, timeout=15).json().get("data", {}).get("name", f"سورة {item['surah']}")
     ayahs = []
-
-    for a in range(item["start"], item["end"] + 1):
-        t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{item['surah']}:{a}/quran-simple", timeout=15).json()
+    for a in range(emo["start"], emo["end"] + 1):
+        t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{emo['surah']}:{a}/quran-simple", timeout=15).json()
         txt = clean_arabic_text(t_res.get("data", {}).get("text", ""))
-        if a == 1 and item["surah"] != 1:
+        if a == 1 and emo["surah"] != 1:
             txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
-        surah_str = f"{item['surah']:03d}"
+        surah_str = f"{emo['surah']:03d}"
         ayah_str = f"{a:03d}"
-        aud_url = f"https://everyayah.com/data/{reciter_id}/{surah_str}{ayah_str}.mp3"
-        aud_name = f"aud_{a}.mp3"
-        try:
-            r = requests.get(aud_url, timeout=25)
-            if r.status_code == 200 and len(r.content) > 3000:
-                with open(aud_name, "wb") as f:
-                    f.write(r.content)
-            else:
-                r_fb = requests.get(f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3", timeout=25)
-                with open(aud_name, "wb") as f:
-                    f.write(r_fb.content)
-        except Exception:
-            r_fb = requests.get(f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3", timeout=25)
-            with open(aud_name, "wb") as f:
-                f.write(r_fb.content)
+        aud_url = f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3"
+        aud_file = f"u_{user_id}_{a}.mp3"
+        with open(aud_file, "wb") as f:
+            f.write(requests.get(aud_url, timeout=25).content)
+        ayahs.append({"text": txt, "audio": aud_file})
 
-        ayahs.append({"text": txt, "audio": aud_name})
-
+    # جلب فيديو Pexels
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
-    query = random.choice(THEMES[theme_key]["queries"])
     headers = {"Authorization": pexels_key} if pexels_key else {}
-    res = requests.get(f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=10", headers=headers, timeout=15).json()
+    res = requests.get("https://api.pexels.com/videos/search?query=switzerland+mountains+drone+vertical&orientation=portrait&per_page=6", headers=headers, timeout=15).json()
     chosen_video = random.choice(res.get("videos", []))
     v_files = sorted(chosen_video["video_files"], key=lambda x: x.get("width", 0))
-    with open("bg.mp4", "wb") as f:
+    bg_file = f"bg_{user_id}.mp4"
+    with open(bg_file, "wb") as f:
         f.write(requests.get(v_files[-1]["link"], timeout=35).content)
 
     font_b64 = get_font_base64()
     audio_clips, text_clips = [], []
     curr_t = 0.0
 
-    for i, ay in enumerate(ayahs):
+    for ay in ayahs:
         ac = AudioFileClip(ay["audio"])
         audio_clips.append(ac)
-        img_file = render_quran_ayah_image(ay["text"], i, font_b64, watermark)
-        text_clips.append(ImageClip(img_file).set_start(curr_t).set_duration(ac.duration).set_position(("center", "center")))
+        words = ay["text"].split()
+        tot_chars = sum(len(w) for w in words)
+        w_start = curr_t
+        for idx, w in enumerate(words):
+            w_dur = (len(w) / tot_chars) * ac.duration
+            img_path = render_word_frame(words, idx, emo["badge"], font_b64, watermark)
+            text_clips.append(ImageClip(img_path).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
+            w_start += w_dur
         curr_t += ac.duration
 
     final_audio = concatenate_audioclips(audio_clips)
-    tot_dur = curr_t + 0.8
+    tot_dur = curr_t + 1.0
 
-    bg_clip = VideoFileClip("bg.mp4")
-    bg_clip = (bg_clip.loop(duration=tot_dur) if bg_clip.duration < tot_dur else bg_clip.subclip(0, tot_dur)).resize((1080, 1920))
-    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.20).set_duration(tot_dur)
+    bg = VideoFileClip(bg_file)
+    bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)).resize((1080, 1920))
+    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.22).set_duration(tot_dur)
 
-    final = CompositeVideoClip([bg_clip, dim] + text_clips).set_audio(final_audio)
-    out_file = "final_reel.mp4"
-    final.write_videofile(out_file, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
+    out_name = f"reel_user_{user_id}.mp4"
+    final = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
+    final.write_videofile(out_name, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
+    return out_name, emo["name"], rec_name
 
-    repo = os.getenv("GITHUB_REPOSITORY", "").strip()
-    gh_token = os.getenv("GITHUB_TOKEN", "").strip()
-    tag = f"reel-{int(random.random()*1000000000)}"
-    rel_res = requests.post(
-        f"https://api.github.com/repos/{repo}/releases",
-        headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
-        json={"tag_name": tag, "name": f"Reel {tag}", "draft": False},
-        timeout=20
-    ).json()
-
-    upload_url = rel_res["upload_url"].split("{")[0]
-    with open(out_file, "rb") as vf:
-        up = requests.post(f"{upload_url}?name=final_reel.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=60).json()
-    pub_url = up.get("browser_download_url")
-
-    ayah_range = f"{item['start']}-{item['end']}"
-    title = f"تلاوة تريح القلب 🌿 سورة {surah_name} ({ayah_range}) | {reciter_name}"[:100]
-    caption = f"سورة {surah_name} 🤍 بصوت {reciter_name}\n\n#قرآن #تلاوات #fyp #explore"
-    pinned_com = random.choice(PINNED_COMMENTS)
-
-    buf_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
-    buf_channels = [c.strip() for c in os.getenv("BUFFER_CHANNEL_ID", "").split(",") if c.strip()]
-    if buf_token and buf_channels:
-        mutation = """mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) { ... on PostActionSuccess { post { id } } ... on MutationError { message } } }"""
-        for ch in buf_channels:
-            payload = {"channelId": ch, "text": caption, "mode": "shareNow", "schedulingType": "automatic", "assets": [{"video": {"url": pub_url}}]}
-            if "youtube" in ch or ch == "6aa72b30ea19ca0bde39598b":
-                payload["metadata"] = {"youtube": {"title": title, "categoryId": "27"}}
-            else:
-                payload["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
-            try:
-                requests.post("https://api.buffer.com", headers={"Authorization": f"Bearer {buf_token}", "Content-Type": "application/json"}, json={"query": mutation, "variables": {"input": payload}}, timeout=30)
-            except Exception:
-                pass
-
-    log_publish_event(surah_name, ayah_range, reciter_name, pub_url)
-    return surah_name, ayah_range, pub_url, pinned_com
-
-def build_main_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🎙️ القارئ: {CONFIG['reciter_name']}", callback_data="menu_reciters")],
-        [InlineKeyboardButton(f"🎬 المشهد: {CONFIG['theme_name']}", callback_data="menu_themes")],
-        [InlineKeyboardButton("⚡ إنتاج ونشر فوري الآن", callback_data="btn_publish_now")],
-        [InlineKeyboardButton("📊 إحصائيات النشر اليومي", callback_data="btn_show_stats")]
-    ])
-
+# ----------------- واجهات التفاعل -----------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "🎛️ <b>لوحة التحكم في خط إنتاج القرآن الكريم</b>\n\n"
-        "اختر القارئ المفضل ونوع المشهد، أو اضغط على <b>الإنتاج الفوري</b> لنشر مقطع جديد على الفور عبر يوتيوب، إنستغرام، وتيك توك:"
-    )
-    await update.message.reply_text(msg, parse_mode="HTML", reply_markup=build_main_keyboard())
+    user_id = str(update.effective_user.id)
+    is_admin = (user_id == ADMIN_ID)
 
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(get_stats_report(), parse_mode="HTML", disable_web_page_preview=True)
+    buttons = [
+        [InlineKeyboardButton("💊 صيدلية المشاعر (اختر ما تشعر به)", callback_data="user_menu_emotions")],
+        [InlineKeyboardButton("🎙️ اختر قارئك المفضل واصنع تلاوتك", callback_data="user_menu_reciters")]
+    ]
+
+    if is_admin:
+        buttons.append([InlineKeyboardButton("👑 لوحة تحكم الأدمن (نشر فوري وإحصائيات)", callback_data="admin_dashboard")])
+
+    welcome_text = (
+        f"مرحباً بك {update.effective_user.first_name} في <b>بوت القرآن الكريم التفاعلي</b> 🌿\n\n"
+        "✨ اختر ما تشعر به من <b>صيدلية المشاعر</b> أو حدد قارئك المفضل، وسيقوم البوت بصناعة فيديو تلاوة سينمائي متزامن بالذهب لك خصيصاً خلال ثوانٍ!"
+    )
+    await update.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    user_id = str(update.effective_user.id)
 
-    if data == "menu_main":
+    if user_id not in USER_SESSIONS:
+        USER_SESSIONS[user_id] = {"emotion": "emo_sadness", "reciter": "dossari"}
+
+    if data == "user_menu_emotions":
+        btns = [
+            [InlineKeyboardButton(v["title"], callback_data=f"sel_emo_{k}")]
+            for k, v in COMMUNITY_EMOTIONS.items()
+        ]
+        btns.append([InlineKeyboardButton("🔙 رجوع", callback_data="go_home")])
+        await query.edit_message_text("🌿 <b>صف لنا ما تشعر به في صدرك الآن:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(btns))
+
+    elif data.startswith("sel_emo_"):
+        key = data.replace("sel_emo_", "")
+        USER_SESSIONS[user_id]["emotion"] = key
+        # الانتقال لاختيار القارئ
+        btns = [
+            [InlineKeyboardButton(v[1], callback_data=f"sel_rec_{k}")]
+            for k, v in RECITERS_DICT.items()
+        ]
         await query.edit_message_text(
-            "🎛️ <b>لوحة التحكم الرئيسية:</b>",
+            f"✅ تم اختيار الحالة: <b>{COMMUNITY_EMOTIONS[key]['title']}</b>\n\n"
+            "🎙️ <b>اختر القارئ الذي تحب أن تسمع بصوته:</b>",
             parse_mode="HTML",
-            reply_markup=build_main_keyboard()
+            reply_markup=InlineKeyboardMarkup(btns)
         )
 
-    elif data == "menu_reciters":
-        buttons = []
-        rec_items = list(RECITERS.items())
-        # ترتيب الأزرار في صفين متجاورين لتنسيق مريح في تليجرام
-        for i in range(0, len(rec_items), 2):
-            row = []
-            k1, v1 = rec_items[i]
-            row.append(InlineKeyboardButton(f"{'✅ ' if CONFIG['reciter_id'] == v1[0] else ''}{v1[1]}", callback_data=f"set_rec_{k1}"))
-            if i + 1 < len(rec_items):
-                k2, v2 = rec_items[i+1]
-                row.append(InlineKeyboardButton(f"{'✅ ' if CONFIG['reciter_id'] == v2[0] else ''}{v2[1]}", callback_data=f"set_rec_{k2}"))
-            buttons.append(row)
-        buttons.append([InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data="menu_main")])
-        await query.edit_message_text("🎙️ <b>اختر القارئ المفضل للإنتاج:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
+    elif data.startswith("sel_rec_"):
+        rec_key = data.replace("sel_rec_", "")
+        USER_SESSIONS[user_id]["reciter"] = rec_key
+        emo_key = USER_SESSIONS[user_id]["emotion"]
 
-    elif data.startswith("set_rec_"):
-        key = data.replace("set_rec_", "")
-        CONFIG["reciter_id"], CONFIG["reciter_name"] = RECITERS[key]
-        await query.edit_message_text(f"✅ تم ضبط القارئ على: <b>{CONFIG['reciter_name']}</b>", parse_mode="HTML", reply_markup=build_main_keyboard())
-
-    elif data == "menu_themes":
-        buttons = [
-            [InlineKeyboardButton(f"{'✅ ' if CONFIG['theme_key'] == k else ''}{v['name']}", callback_data=f"set_thm_{k}")]
-            for k, v in THEMES.items()
-        ]
-        buttons.append([InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data="menu_main")])
-        await query.edit_message_text("🎬 <b>اختر نوع المشهد الطبيعي للخلفية:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-
-    elif data.startswith("set_thm_"):
-        key = data.replace("set_thm_", "")
-        CONFIG["theme_key"] = key
-        CONFIG["theme_name"] = THEMES[key]["name"]
-        await query.edit_message_text(f"✅ تم ضبط نوع المشهد على: <b>{CONFIG['theme_name']}</b>", parse_mode="HTML", reply_markup=build_main_keyboard())
-
-    elif data == "btn_show_stats":
-        back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_main")]])
-        await query.edit_message_text(get_stats_report(), parse_mode="HTML", disable_web_page_preview=True, reply_markup=back_kb)
-
-    elif data == "btn_publish_now":
-        status_msg = await query.message.reply_text(
-            f"⏳ <b>بدء الإنتاج الفوري...</b>\n"
-            f"• القارئ: {CONFIG['reciter_name']}\n"
-            f"• المشهد: {CONFIG['theme_name']}\n\n"
-            f"جاري جلب الآيات والمونتاج المتزامن ونشر الفيديو...",
+        status_msg = await query.edit_message_text(
+            f"⏳ <b>جاري مونتاج تلاوتك الخاصة الآن...</b>\n\n"
+            f"• الحالة: {COMMUNITY_EMOTIONS[emo_key]['title']}\n"
+            f"• القارئ: {RECITERS_DICT[rec_key][1]}\n"
+            f"• المؤثرات: تظليل الكلمات بالذهب + صوت 8D ومطر خافت 🎧\n\n"
+            f"يرجى الانتظار ثوانٍ معدودة...",
             parse_mode="HTML"
         )
+
         try:
-            s_name, a_range, pub_url, pinned_comment = await asyncio.to_thread(
-                execute_pipeline, CONFIG["reciter_id"], CONFIG["reciter_name"], CONFIG["theme_key"]
+            video_path, s_name, r_name = await asyncio.to_thread(
+                generate_custom_user_video, emo_key, rec_key, user_id
             )
-
-            report = (
-                f"✅ <b>تم إنتاج ونشر المقطع بنجاح!</b>\n\n"
-                f"📖 <b>السورة:</b> {s_name} ({a_range})\n"
-                f"🎙️ <b>القارئ:</b> {CONFIG['reciter_name']}\n"
-                f"🔗 <b>رابط الفيديو:</b> <a href='{pub_url}'>مشاهدة المقطع</a>\n\n"
-                f"📌 <b>التعليق المقترح للتثبيت:</b>\n"
-                f"<code>{pinned_comment}</code>"
-            )
-            await status_msg.edit_text(report, parse_mode="HTML", disable_web_page_preview=True)
-
-            if os.path.exists("final_reel.mp4"):
-                with open("final_reel.mp4", "rb") as vf:
-                    await query.message.reply_video(video=vf, caption=f"سورة {s_name} ({a_range}) - {CONFIG['reciter_name']} 🌿")
+            with open(video_path, "rb") as vf:
+                caption = (
+                    f"🤍 تلاوتك الخاصة:\n"
+                    f"سورة {s_name} بصوت القارئ {r_name} 🌿\n\n"
+                    f"ضع السماعات وعش السكينة 🎧 • شاركها تؤجر 🕊️"
+                )
+                await query.message.reply_video(video=vf, caption=caption)
+            await status_msg.delete()
         except Exception as e:
-            await status_msg.edit_text(f"❌ حدث خطأ أثناء الإنتاج: {e}")
+            await query.message.reply_text(f"❌ حدث خطأ أثناء إعداد المقطع: {e}")
+
+    elif data == "go_home":
+        await start_command(query, context)
 
 def main():
     if not BOT_TOKEN:
-        print("خطأ: لم يتم ضبط TELEGRAM_BOT_TOKEN في Secrets!", flush=True)
+        print("يرجى ضبط TELEGRAM_BOT_TOKEN!", flush=True)
         sys.exit(1)
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    print("🚀 تم تشغيل لوحة التحكم مع مكتبة القراء الرائجة 24/7...", flush=True)
+    print("🚀 تم تشغيل بوت مجتمع المتابعين وصيدلية المشاعر 24/7...", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
