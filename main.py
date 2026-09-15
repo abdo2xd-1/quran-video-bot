@@ -11,7 +11,7 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip, concatenate_audioclips
 )
 
-# قائمة السور والمقاطع (من 3 آيات كحد أدنى إلى سورة كاملة)
+# قائمة السور والمقاطع القصيرة (3 آيات كحد أدنى إلى سورة كاملة)
 QURAN_PLAYLIST = [
     {"surah": 108, "start": 1, "end": 3, "name": "الكوثر"},
     {"surah": 103, "start": 1, "end": 3, "name": "العصر"},
@@ -27,11 +27,16 @@ QURAN_PLAYLIST = [
     {"surah": 93,  "start": 1, "end": 5, "name": "الضحى"}
 ]
 
+# باقة القراء الأكثر انتشاراً وتأثيراً على تيك توك وريلز
 RECITERS_POOL = [
-    ("ar.alafasy", "مشاري العفاسي"),
-    ("ar.abdulbasitmurattal", "عبد الباسط عبد الصمد"),
-    ("ar.husary", "محمود خليل الحصري"),
-    ("ar.minshawi", "محمد صديق المنشاوي")
+    {"id": "Dussary_128kbps", "name": "ياسر الدوسري", "tone": "تلاوة خاشعة تهز القلوب"},
+    {"id": "Nasser_Alqatami_128kbps", "name": "ناصر القطامي", "tone": "تلاوة خاشعة وباكية"},
+    {"id": "Fares_Abbad_64kbps", "name": "فارس عباد", "tone": "نبرة شجية حزينة تريح البال"},
+    {"id": "MaherAlMuaiqly128kbps", "name": "ماهر المعيقلي", "tone": "سكينة وطمأنينة الحرم"},
+    {"id": "Alafasy_128kbps", "name": "مشاري العفاسي", "tone": "راحة نفسية وهدوء للروح"},
+    {"id": "Abdul_Basit_Murattal_192kbps", "name": "عبد الباسط عبد الصمد", "tone": "تلاوة مهيبة تأسر الروح"},
+    {"id": "Minshawy_Murattal_128kbps", "name": "محمد صديق المنشاوي", "tone": "خشوع وتدبر عميق"},
+    {"id": "Ghamadi_40kbps", "name": "سعد الغامدي", "tone": "تلاوة هادئة لراحة البال"}
 ]
 
 THEMATIC_SERIES = {
@@ -81,29 +86,32 @@ PINNED_COMMENTS = [
 
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
-def build_seo_metadata(surah_name, ayah_range, reciter_name, surah_num):
+def build_seo_metadata(surah_name, ayah_range, reciter_info, surah_num):
+    r_name = reciter_info["name"]
+    r_tone = reciter_info["tone"]
+
     if surah_num == 67:
         theme = THEMATIC_SERIES["نوم"]
-        intent_title = f"تلاوة للنوم العميق وراحة القلب 🌙 سورة {surah_name} ({ayah_range}) بصوت {reciter_name}"
+        intent_title = f"{r_tone} قبل النوم 🌙 سورة {surah_name} ({ayah_range}) | {r_name}"
     elif surah_num == 93:
         theme = THEMATIC_SERIES["فجر"]
-        intent_title = f"آيات تفتح لك أبواب الخير والرزق 🕊️ سورة {surah_name} بصوت {reciter_name}"
+        intent_title = f"آيات تفتح أبواب الرزق 🕊️ سورة {surah_name} | {r_name}"
     elif surah_num in [1, 94, 55]:
         theme = THEMATIC_SERIES["سكينة"]
-        intent_title = f"تلاوة تريح القلب وتزيل الهم 🌿 سورة {surah_name} كاملة | {reciter_name}"
+        intent_title = f"{r_tone} تريح القلب 🌿 سورة {surah_name} كاملة | {r_name}"
     else:
         theme = THEMATIC_SERIES["قصار"]
-        intent_title = f"قصار السور لراحة البال 🤍 سورة {surah_name} كاملة | القارئ {reciter_name}"
+        intent_title = f"قصار السور لراحة البال 🤍 سورة {surah_name} كاملة | {r_name}"
 
     hook = random.choice(theme["hooks"])
     caption = (
         f"{hook}\n\n"
         f"📖 سورة {surah_name} ({ayah_range})\n"
-        f"🎙️ القارئ: {reciter_name}\n"
+        f"🎙️ القارئ: {r_name} ({r_tone})\n"
         f"📁 {theme['playlist']}\n\n"
         f"شاركها لعلها تريح قلباً متعباً وتكون لك صدقة جارية 🤍\n\n"
-        f"{theme['tag']} #تلاوة_تريح_القلب #راحة_نفسية #قرآن #سورة_{surah_name.replace(' ', '_')} "
-        f"#quran #islamic_reels #fyp #explore #shorts"
+        f"{theme['tag']} #تلاوة_خاشعة #تلاوات_باكية #راحة_نفسية #قرآن #سورة_{surah_name.replace(' ', '_')} "
+        f"#{r_name.replace(' ', '_')} #quran #fyp #explore #shorts"
     )
     return intent_title[:100], caption
 
@@ -146,32 +154,42 @@ def clean_arabic_text(text):
     return text.strip()
 
 def fetch_ayahs_data(surah_num, start_ayah, end_ayah, reciter_id, reciter_name):
-    print(f"جلب آيات سورة {surah_num} ({start_ayah}-{end_ayah})...", flush=True)
+    print(f"جلب آيات سورة {surah_num} ({start_ayah}-{end_ayah}) بصوت {reciter_name} عبر EveryAyah...", flush=True)
     meta_url = f"https://api.alquran.cloud/v1/surah/{surah_num}"
     surah_name = requests.get(meta_url, timeout=15).json().get("data", {}).get("name", f"سورة {surah_num}")
 
     ayahs_list = []
 
     for a_num in range(start_ayah, end_ayah + 1):
+        # نص الآية المشكول
         text_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/quran-simple"
-        audio_url = f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/{reciter_id}"
-
         t_res = requests.get(text_url, timeout=15).json()
-        a_res = requests.get(audio_url, timeout=15).json()
-
         cleaned_text = clean_arabic_text(t_res.get("data", {}).get("text", ""))
 
         if a_num == 1 and surah_num != 1:
             cleaned_text = cleaned_text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
-        audio_link = a_res.get("data", {}).get("audio")
-        if not audio_link:
-            fb = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a_num}/ar.alafasy", timeout=15).json()
-            audio_link = fb.get("data", {}).get("audio")
+        # جلب الصوت الدقيق آية بآية من خوادم EveryAyah
+        surah_str = f"{surah_num:03d}"
+        ayah_str = f"{a_num:03d}"
+        primary_audio = f"https://everyayah.com/data/{reciter_id}/{surah_str}{ayah_str}.mp3"
+        fallback_audio = f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3"
 
         audio_filename = f"audio_{a_num}.mp3"
-        with open(audio_filename, "wb") as f:
-            f.write(requests.get(audio_link, timeout=25).content)
+        try:
+            r = requests.get(primary_audio, timeout=25)
+            if r.status_code == 200 and len(r.content) > 3000:
+                with open(audio_filename, "wb") as f:
+                    f.write(r.content)
+            else:
+                r_fb = requests.get(fallback_audio, timeout=25)
+                with open(audio_filename, "wb") as f:
+                    f.write(r_fb.content)
+        except Exception as e:
+            print(f"Audio download fallback triggered: {e}", flush=True)
+            r_fb = requests.get(fallback_audio, timeout=25)
+            with open(audio_filename, "wb") as f:
+                f.write(r_fb.content)
 
         ayahs_list.append({
             "number": a_num,
@@ -192,7 +210,7 @@ def download_scenic_nature_video():
         "alps landscape sunny green valley",
         "scenic mountains clouds aerial vertical",
         "norway green mountains drone vertical",
-        "nature green valley aerial 4k vertical"
+        "foggy mountain road cinematic vertical"
     ]
     query = random.choice(queries)
     url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=15"
@@ -313,7 +331,7 @@ def render_quran_ayah_image(text, index, font_b64, watermark_handle):
     return png_filename
 
 def build_synchronized_video(ayahs_list, watermark_handle):
-    print("مونتاج الفيديو وإدماج العلامة المائية في Safe Zone...", flush=True)
+    print("مونتاج الفيديو وتزامن ظهور كل آية مع الصوت بدقة...", flush=True)
     font_b64 = get_font_base64()
 
     audio_clips = []
@@ -430,7 +448,6 @@ def post_to_buffer(video_url, video_title, caption):
             "assets": [{"video": {"url": video_url}}]
         }
 
-        # ضبط متطلبات كل منصة بدون firstComment لتجنب قيود الخطة المجانية
         if service == "youtube" or ch_id == "6aa72b30ea19ca0bde39598b":
             post_input["metadata"] = {"youtube": {"title": video_title, "categoryId": "27"}}
         elif service == "instagram" or ch_id == "6aa6d1fbea19ca0bde35e91c":
@@ -469,27 +486,27 @@ def notify_telegram(message):
         print(f"Telegram notify error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("=== بدء إنتاج فيديو القرآن المتزامن الاحترافي ===", flush=True)
+    print("=== بدء إنتاج فيديو القرآن المتزامن (Trending Reciters Pool) ===", flush=True)
     item = random.choice(QURAN_PLAYLIST)
-    rec = random.choice(RECITERS_POOL)
+    reciter_info = random.choice(RECITERS_POOL)
     watermark_handle = os.getenv("WATERMARK_HANDLE", "@quran_reels").strip()
     selected_pinned_comment = random.choice(PINNED_COMMENTS)
 
-    notify_telegram(f"🎬 جاري إنتاج ريلز متزامن:\nسورة {item['name']} ({item['start']}-{item['end']}) بصوت {rec[1]}...")
+    notify_telegram(f"🎬 جاري إنتاج ريلز متزامن:\nسورة {item['name']} بصوت القارئ {reciter_info['name']} ({reciter_info['tone']})...")
 
     ayahs, s_name, a_range, r_name = fetch_ayahs_data(
-        item["surah"], item["start"], item["end"], rec[0], rec[1]
+        item["surah"], item["start"], item["end"], reciter_info["id"], reciter_info["name"]
     )
 
     download_scenic_nature_video()
     build_synchronized_video(ayahs, watermark_handle)
     pub_url = upload_video_to_github_release()
 
-    video_title, full_caption = build_seo_metadata(s_name, a_range, r_name, item["surah"])
+    video_title, full_caption = build_seo_metadata(s_name, a_range, reciter_info, item["surah"])
     post_to_buffer(pub_url, video_title, full_caption)
 
     tg_report = (
-        f"✨ تم النشر بنجاح على المنصات الثلاث!\n"
+        f"✨ تم النشر بنجاح على جميع المنصات!\n"
         f"العنوان: {video_title}\n"
         f"الرابط: {pub_url}\n\n"
         f"📌 التعليق التفاعلي للتثبيت:\n"
