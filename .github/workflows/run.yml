@@ -1,13 +1,17 @@
-name: Daily Quran Publisher (1 Video Per Day)
+name: Quran Publisher (Friday 1PM & Daily 6PM)
 
 on:
   schedule:
-    # يعمل مرة واحدة يومياً في تمام الساعة 6:00 مساءً بتوقيت مصر (15:00 UTC)
-    - cron: '0 15 * * *'
-  workflow_dispatch: # تشغيل يدوي في أي وقت بضغطة زر
+    # 1. يوم الجمعة الساعة 1:00 ظهراً بتوقيت مصر (10:00 UTC)
+    - cron: '0 10 * * 5'
+    
+    # 2. باقي الأيام (السبت إلى الخميس) الساعة 6:00 مساءً بتوقيت مصر (15:00 UTC)
+    - cron: '0 15 * * 0,1,2,3,4,6'
+
+  workflow_dispatch: # يتيح لك التشغيل اليدوي في أي وقت للتجربة
 
 jobs:
-  publish-daily-video:
+  publish-scheduled-video:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -29,9 +33,9 @@ jobs:
       - name: Install Python Requirements
         run: |
           pip install --upgrade pip
-          pip install requests "moviepy==1.0.3" Pillow imageio-ffmpeg
+          pip install requests "moviepy==1.0.3" "Pillow<10" imageio-ffmpeg
 
-      - name: Run Production & Publish (1 Video)
+      - name: Run Auto Publisher
         env:
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
