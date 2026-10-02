@@ -2,16 +2,18 @@ name: Quran Publisher (Friday 1PM & Daily 6PM)
 
 on:
   schedule:
-    # يوم الجمعة الساعة 1:10 ظهراً بتوقيت مصر (10:10 UTC - لتجنب ضغط السيرفرات)
+    # يوم الجمعة الساعة 1:10 ظهراً بتوقيت مصر (10:10 UTC)
     - cron: '10 10 * * 5'
     
     # باقي الأيام الساعة 6:10 مساءً بتوقيت مصر (15:10 UTC)
     - cron: '10 15 * * 0,1,2,3,4,6'
 
   workflow_dispatch:
+
 jobs:
   publish-scheduled-video:
     runs-on: ubuntu-latest
+    timeout-minutes: 300   # 👈 5 ساعات كاملة (300 دقيقة)
     permissions:
       contents: write
 
@@ -43,5 +45,6 @@ jobs:
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
           WATERMARK_HANDLE: ${{ secrets.WATERMARK_HANDLE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python main.py
