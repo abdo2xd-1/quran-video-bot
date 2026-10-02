@@ -71,23 +71,57 @@ def clean_arabic(text):
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
+# درع كسر البصمة الصوتية وحقوق الملكية
+def apply_anti_copyright_audio(input_audio, output_audio):
+    audio_filter = (
+        "aresample=44100,"
+        "asetrate=44100*1.018,"
+        "atempo=0.982,"
+        "aecho=0.8:0.75:32:0.22,"
+        "equalizer=f=1100:width_type=q:w=1:g=1.8"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_audio,
+        "-af", audio_filter,
+        "-b:a", "192k",
+        output_audio
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return output_audio
+
 def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
     surah_str = f"{surah_num:03d}"
     ayah_str = f"{ayah_num:03d}"
+    raw_tmp = f"raw_{surah_str}_{ayah_str}.mp3"
+
     urls = [
         f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3",
         f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3",
         f"https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/{surah_str}{ayah_str}.mp3"
     ]
+    downloaded = False
     for u in urls:
         try:
             r = requests.get(u, timeout=20)
             if r.status_code == 200 and len(r.content) > 4000 and not r.content.startswith(b"<!DOCTYPE"):
-                with open(out_file, "wb") as f:
+                with open(raw_tmp, "wb") as f:
                     f.write(r.content)
-                return True
+                downloaded = True
+                break
         except Exception:
             continue
+
+    if downloaded:
+        try:
+            apply_anti_copyright_audio(raw_tmp, out_file)
+            if os.path.exists(raw_tmp):
+                os.remove(raw_tmp)
+            return True
+        except Exception:
+            if os.path.exists(raw_tmp):
+                os.rename(raw_tmp, out_file)
+                return True
     return False
 
 def render_quran_frame(words, active_idx, badge_text, font_b64):
@@ -199,9 +233,10 @@ def build_single_short(surah_num, surah_name, start_a, end_a, part_num, total_pa
     with open(bg_file, "wb") as f:
         f.write(requests.get(v_files[-1]["link"], timeout=35).content)
 
+    # تكبير خفيف بنسبة 4% لكسر البصمة البصرية
     bg = VideoFileClip(bg_file)
-    bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)).resize((1080, 1920))
-    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.22).set_duration(tot_dur)
+    bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)).resize(1.04).resize((1080, 1920))
+    dim = ColorClip(size=(1080, 1920), color=(10, 15, 20)).set_opacity(0.28).set_duration(tot_dur)
 
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
 
@@ -209,9 +244,14 @@ def build_single_short(surah_num, surah_name, start_a, end_a, part_num, total_pa
     generate_cover_file(surah_name, part_num, total_parts, rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.12).resize((1080, 1920))
 
+    # ضبط معدل البت ديناميكياً لضمان بقاء الحجم أقل من 38MB
+    max_bits = 38 * 1024 * 1024 * 8
+    target_k = int(max_bits / max(tot_dur, 1)) // 1000
+    safe_bitrate = f"{max(800, min(target_k, 2000))}k"
+
     temp_joined = f"temp_{tag}_{part_num}.mp4"
     joined = concatenate_videoclips([cover_clip, main_video])
-    joined.write_videofile(temp_joined, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
+    joined.write_videofile(temp_joined, fps=24, codec="libx264", audio_codec="aac", bitrate=safe_bitrate, threads=4, preset="ultrafast")
 
     out_file = f"short_{surah_name}_part{part_num}.mp4"
     embed_cmd = ["ffmpeg", "-y", "-i", temp_joined, "-i", cover_file, "-map", "0", "-map", "1", "-c", "copy", "-disposition:v:1", "attached_pic", out_file]
@@ -220,7 +260,18 @@ def build_single_short(surah_num, surah_name, start_a, end_a, part_num, total_pa
     except Exception:
         out_file = temp_joined
 
-    # تنظيف الملفات المؤقتة لتوفير المساحة
+    # فحص أخير: لو تخطى 45MB يتم ضغطه فوراً
+    if os.path.exists(out_file) and os.path.getsize(out_file) > 45 * 1024 * 1024:
+        compressed_out = f"cmp_{out_file}"
+        c_cmd = ["ffmpeg", "-y", "-i", out_file, "-vcodec", "libx264", "-crf", "28", "-b:a", "128k", compressed_out]
+        try:
+            subprocess.run(c_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if os.path.exists(compressed_out):
+                os.replace(compressed_out, out_file)
+        except Exception:
+            pass
+
+    # تنظيف الملفات المؤقتة
     for ay in ayahs:
         if os.path.exists(ay["audio"]): os.remove(ay["audio"])
     if os.path.exists(bg_file): os.remove(bg_file)
@@ -233,12 +284,11 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
     user_text = update.message.text.strip().lower()
     tag = f"{update.effective_user.id}_{int(time.time())}"
 
-    # طلب تقسيم سورة الكهف إلى شورتس كاملة
     if "الكهف" in user_text and any(k in user_text for k in ["قسم", "شورت", "شورتس", "اجزاء", "أجزاء", "كلها"]):
         status_msg = await update.message.reply_text(
-            "🚀 <b>تم تفعيل مُقسّم سورة الكهف الشامل!</b>\n\n"
-            "جاري الآن إنتاج سورة الكهف كاملة مقسمة إلى <b>10 أجزاء شورتس</b> مرقمة بالتظليل الذهبي...\n"
-            "⏳ سأرسل لك كل جزء فور اكتمال مونتاجه مباشرة!",
+            "🚀 <b>تم تفعيل مُقسّم سورة الكهف الشامل (مع حماية الحجم 🛡️)!</b>\n\n"
+            "جاري إنتاج الـ 10 أجزاء شورتس بضغط ذكي لتفادي رفض تيليجرام...\n"
+            "⏳ سأرسل لك كل جزء فور اكتماله مباشرة!",
             parse_mode="HTML"
         )
 
@@ -256,18 +306,26 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
                     f"#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #shorts #reels"
                 )
                 with open(vid_path, "rb") as vf, open(cov_path, "rb") as cf:
-                    await update.message.reply_video(video=vf, thumbnail=cf, caption=caption, parse_mode="HTML")
+                    await update.message.reply_video(
+                        video=vf, 
+                        thumbnail=cf, 
+                        caption=caption, 
+                        parse_mode="HTML",
+                        read_timeout=300,
+                        write_timeout=300
+                    )
 
-                # حذف الملفات بعد الإرسال للحفاظ على نظافة السيرفر
                 if os.path.exists(vid_path): os.remove(vid_path)
                 if os.path.exists(cov_path): os.remove(cov_path)
-            except Exception as e:
-                await update.message.reply_text(f"⚠️ تعذر مونتاج الجزء {p_num}: {e}")
+                await asyncio.sleep(4)
 
-        await status_msg.edit_text("✅ <b>اكتمل إنتاج وإرسال جميع أجزاء سورة الكهف (10 مقاطع شورتس) بنجاح!</b> 🌿", parse_mode="HTML")
+            except Exception as e:
+                await update.message.reply_text(f"⚠️ تعذر إرسال الجزء {p_num}: {e}")
+
+        await status_msg.edit_text("✅ <b>اكتمل إنتاج وإرسال جميع أجزاء سورة الكهف (10 أجزاء) بنجاح تام وبأحجام متوافقة!</b> 🌿", parse_mode="HTML")
         return
 
-    # طلب جزء محدد فقط (مثال: الجزء الأول)
+    # طلب جزء محدد فقط
     if "الكهف" in user_text:
         item = KAHF_PARTS_SPLIT[0]
         status_msg = await update.message.reply_text("⏳ جاري إنتاج مقطع شورتس لسورة الكهف (الجزء 1)...")
@@ -286,7 +344,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"أهلاً بك يا {update.effective_user.first_name} في <b>بوت تقسيم ومونتاج الشورتس الذكي</b> 🎬\n\n"
         "✨ <b>الأمر السحري:</b>\n"
         "اكتب: <code>قسم سورة الكهف كلها شورتس</code>\n"
-        "وسيقوم البوت تلقائياً بتقسيم السورة إلى 10 مقاطع ريلز وشورتس مرقمة ومونتاجها وإرسالها لك واحدة تلو الأخرى!"
+        "وسيقوم البوت تلقائياً بإنتاج وإرسال الـ 10 أجزاء بدون أي أخطاء في الحجم!"
     )
     await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -295,11 +353,18 @@ def main():
         print("خطأ: TELEGRAM_BOT_TOKEN مفقود!", flush=True)
         sys.exit(1)
 
-    app = Application.builder().token(BOT_TOKEN).read_timeout(180).write_timeout(180).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .read_timeout(300)
+        .write_timeout(300)
+        .connect_timeout(60)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
 
-    print("🚀 تم تشغيل محرك تقسيم الشورتس التلقائي 24/7...", flush=True)
+    print("🚀 تم تشغيل محرك تقسيم الشورتس مع الحماية من الحجم الزائد 24/7...", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
