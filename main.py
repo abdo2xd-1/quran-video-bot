@@ -10,7 +10,7 @@ import datetime
 import subprocess
 import requests
 
-# ترقيع توافق Pillow مع MoviePy
+# ترقيع توافق Pillow مع إصدارات MoviePy 1.0.3
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = getattr(PIL.Image, 'LANCZOS', getattr(PIL.Image, 'Resampling', None).LANCZOS if hasattr(PIL.Image, 'Resampling') else None)
@@ -35,7 +35,7 @@ KAHF_PARTS_SPLIT = [
     {"part": 10, "start": 99, "end": 110, "theme": "نفخ الصور وجنات الفردوس"}
 ]
 
-# ----------------- 2. جدول الأيام العادية (السبت إلى الخميس الساعة 6 مساءً - فيديو واحد) -----------------
+# ----------------- 2. جدول الأيام العادية (السبت إلى الخميس الساعة 6 مساءً) -----------------
 REGULAR_PLAYLIST = [
     {"surah": 94, "start": 1, "end": 8, "name": "الشرح", "badge": "رسالة لقلبك إذا كنت حزيناً 🌿", "hook": "إذا ضاقت بك الدنيا.. استمع لرسالة الله 🤍"},
     {"surah": 65, "start": 2, "end": 3, "name": "الطلاق", "badge": "إذا كنت قلقاً من الرزق 🕊️", "hook": "اطمئن على رزقك.. الأمر كله بيد الله 🌿"},
@@ -76,23 +76,61 @@ def clean_arabic(text):
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
+# ----------------- 3. درع كسر البصمة الصوتية (Anti-Content ID) -----------------
+def apply_anti_copyright_audio(input_audio, output_audio):
+    """
+    تغيير البصمة الصوتية عبر ضبط التردد + صدى خفيف للحرم + تعديل السرعة بنسبة دقيقة
+    """
+    audio_filter = (
+        "aresample=44100,"
+        "asetrate=44100*1.018,"
+        "atempo=0.982,"
+        "aecho=0.8:0.75:32:0.22,"
+        "equalizer=f=1100:width_type=q:w=1:g=1.8"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_audio,
+        "-af", audio_filter,
+        "-b:a", "192k",
+        output_audio
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return output_audio
+
 def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
     surah_str = f"{surah_num:03d}"
     ayah_str = f"{ayah_num:03d}"
+    raw_tmp = f"raw_{surah_str}_{ayah_str}.mp3"
+
     urls = [
         f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3",
         f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3",
         f"https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/{surah_str}{ayah_str}.mp3"
     ]
+    downloaded = False
     for u in urls:
         try:
             r = requests.get(u, timeout=20)
             if r.status_code == 200 and len(r.content) > 4000 and not r.content.startswith(b"<!DOCTYPE"):
-                with open(out_file, "wb") as f:
+                with open(raw_tmp, "wb") as f:
                     f.write(r.content)
-                return True
+                downloaded = True
+                break
         except Exception:
             continue
+
+    if downloaded:
+        # تمرير الصوت الخام في فلتر كسر الحقوق فوراً
+        try:
+            apply_anti_copyright_audio(raw_tmp, out_file)
+            if os.path.exists(raw_tmp):
+                os.remove(raw_tmp)
+            return True
+        except Exception:
+            if os.path.exists(raw_tmp):
+                os.rename(raw_tmp, out_file)
+                return True
     return False
 
 def render_quran_frame(words, active_idx, badge_text, font_b64):
@@ -194,18 +232,19 @@ def build_single_video(surah_num, surah_name, start_a, end_a, badge_label, part_
     final_audio = concatenate_audioclips(audio_clips)
     tot_dur = curr_t + 0.8
 
-    # جلب فيديو طبيعي عمودي من Pexels
+    # جلب فيديو عمودي من Pexels
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
-    res = requests.get("https://api.pexels.com/videos/search?query=scenic+mountains+drone+vertical&orientation=portrait&per_page=8", headers=headers, timeout=15).json()
+    res = requests.get("https://api.pexels.com/videos/search?query=scenic+mountains+drone+vertical&orientation=portrait&per_page=10", headers=headers, timeout=15).json()
     v_files = sorted(random.choice(res.get("videos", []))["video_files"], key=lambda x: x.get("width", 0))
     bg_file = f"bg_{tag}.mp4"
     with open(bg_file, "wb") as f:
         f.write(requests.get(v_files[-1]["link"], timeout=35).content)
 
+    # كسر البصمة المرئية: تكبير بنسبة 4% + طبقة تعتيم ذهبي
     bg = VideoFileClip(bg_file)
-    bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)).resize((1080, 1920))
-    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.22).set_duration(tot_dur)
+    bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)).resize(1.04).resize((1080, 1920))
+    dim = ColorClip(size=(1080, 1920), color=(10, 15, 20)).set_opacity(0.30).set_duration(tot_dur)
 
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
 
@@ -232,7 +271,6 @@ def build_single_video(surah_num, surah_name, start_a, end_a, badge_label, part_
 
     return out_file, cover_file, rec_name
 
-# ----------------- رفع الملفات والنشر -----------------
 def upload_files(video_file, cover_file):
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
@@ -253,7 +291,6 @@ def upload_files(video_file, cover_file):
             except Exception:
                 time.sleep(1)
 
-    # سيرفر بديل مباشر لـ Buffer
     try:
         with open(video_file, "rb") as f:
             r = requests.post("https://tmpfiles.org/api/v1/upload", files={"file": f}, timeout=90).json()
@@ -301,15 +338,14 @@ def notify_telegram(message, cover_file=None):
     except Exception:
         pass
 
-# ----------------- الدالة الرئيسية لتنفيذ الجدولة -----------------
+# ----------------- الدالة الرئيسية -----------------
 if __name__ == "__main__":
     now_utc = datetime.datetime.utcnow()
-    # الجمعة رقم 4 في بايثون
     is_friday = (now_utc.weekday() == 4)
 
     if is_friday:
-        print("🕌 موعد الجمعة (الساعة 1:00 ظهراً): بدء نشر تقسيمة سورة الكهف كاملة (10 شورتس)...", flush=True)
-        notify_telegram("🕌 <b>بدء نشر سلسلة أجزاء سورة الكهف لشورتس يوم الجمعة المبارك...</b>")
+        print("🕌 موعد الجمعة (الساعة 1:00 ظهراً): نشر أجزاء سورة الكهف بدون حقوق...", flush=True)
+        notify_telegram("🕌 <b>بدء نشر سلسلة أجزاء سورة الكهف بعد تفعيل درع حماية حقوق الملكية 🛡️</b>")
 
         for item in KAHF_PARTS_SPLIT:
             p_num = item["part"]
@@ -317,7 +353,7 @@ if __name__ == "__main__":
             badge_text = f"سورة الكهف • الجزء ({p_num}/10)"
             part_label = f"الجزء ({p_num} من 10) • {item['theme']}"
 
-            print(f"🎬 مونتاج الجزء {p_num} من 10 (الآيات {item['start']}-{item['end']})...", flush=True)
+            print(f"🎬 مونتاج الجزء {p_num} من 10...", flush=True)
             vid_file, cov_file, r_name = build_single_video(18, "الكهف", item["start"], item["end"], badge_text, part_label, "dossari", tag)
 
             pub_url = upload_files(vid_file, cov_file)
@@ -325,7 +361,7 @@ if __name__ == "__main__":
             caption = (
                 f"🕌 سورة الكهف • الجزء ({p_num} من 10)\n"
                 f"📖 الآيات: ({item['start']} - {item['end']}) - {item['theme']}\n"
-                f"🎙️ القارئ: {r_name}\n\n"
+                f"🎙️ بصوت القارئ: {r_name}\n\n"
                 f"نور ما بين الجمعتين 🤍 صلوا على النبي ﷺ\n\n"
                 f"#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #الكهف #shorts #reels"
             )
@@ -335,15 +371,14 @@ if __name__ == "__main__":
 
             report = (
                 f"✅ <b>تم نشر الجزء ({p_num} من 10) بنجاح!</b>\n"
-                f"📖 الآيات: ({item['start']}-{item['end']}) - {item['theme']}\n"
+                f"📖 الآيات: ({item['start']} - {item['end']})\n"
                 f"🔗 الرابط: <a href='{pub_url}'>مشاهدة المقطع</a>"
             )
             notify_telegram(report, cov_file)
 
-            # تنظيف الملفات
             if os.path.exists(vid_file): os.remove(vid_file)
             if os.path.exists(cov_file): os.remove(cov_file)
-            time.sleep(8) # فاصل زمني لضمان معالجة المنصات
+            time.sleep(15)  # فاصل زمني لتفادي حظر السبام والرفع السريع
 
         print("=== اكتمل نشر جميع أجزاء سورة الكهف بنجاح ===", flush=True)
 
@@ -355,7 +390,7 @@ if __name__ == "__main__":
 
         vid_file, cov_file, r_name = build_single_video(
             item["surah"], item["name"], item["start"], item["end"],
-            item["badge"], f"سورة {item['name']} كاملة", reciter_key, tag
+            item["badge"], f"سورة {item['name']}", reciter_key, tag
         )
 
         pub_url = upload_files(vid_file, cov_file)
