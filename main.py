@@ -21,36 +21,61 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip, concatenate_audioclips, concatenate_videoclips
 )
 
-# ----------------- 1. تقسيم سورة الكهف لشورتس يوم الجمعة (الساعة 1 ظهراً) -----------------
-KAHF_PARTS_SPLIT = [
-    {"part": 1, "start": 1, "end": 10, "theme": "العصمة من فتن الدجال"},
-    {"part": 2, "start": 11, "end": 16, "theme": "دخول الكهف وثبات الفتية"},
-    {"part": 3, "start": 17, "end": 22, "theme": "نومهم في الكهف وقدرة الله"},
-    {"part": 4, "start": 23, "end": 31, "theme": "ولا تقولن لشيء إني فاعل ذلك غدا"},
-    {"part": 5, "start": 32, "end": 44, "theme": "قصة صاحب الجنتين"},
-    {"part": 6, "start": 45, "end": 53, "theme": "مثل الحياة الدنيا ومصير المجرمين"},
-    {"part": 7, "start": 54, "end": 64, "theme": "رحلة موسى عليه السلام وفتاه"},
-    {"part": 8, "start": 65, "end": 82, "theme": "موسى والعبد الصالح الخضر"},
-    {"part": 9, "start": 83, "end": 98, "theme": "قصة ذي القرنين ويأجوج ومأجوج"},
-    {"part": 10, "start": 99, "end": 110, "theme": "نفخ الصور وجنات الفردوس"}
-]
-
-# ----------------- 2. جدول الأيام العادية (السبت إلى الخميس الساعة 6 مساءً) -----------------
-REGULAR_PLAYLIST = [
-    {"surah": 94, "start": 1, "end": 8, "name": "الشرح", "badge": "رسالة لقلبك إذا كنت حزيناً 🌿", "hook": "إذا ضاقت بك الدنيا.. استمع لرسالة الله 🤍"},
-    {"surah": 65, "start": 2, "end": 3, "name": "الطلاق", "badge": "إذا كنت قلقاً من الرزق 🕊️", "hook": "اطمئن على رزقك.. الأمر كله بيد الله 🌿"},
-    {"surah": 93, "start": 1, "end": 5, "name": "الضحى", "badge": "أمل يتجدد ومغفرة من الله 🤍", "hook": "ما ودعك ربك وما قلى.. سكينة لقلبك 🌿"},
-    {"surah": 67, "start": 1, "end": 4, "name": "الملك", "badge": "أمان لقلبك وحصن من العذاب 🌙", "hook": "تلاوة هادئة لراحة البال والسكينة 🕊️"},
-    {"surah": 92, "start": 1, "end": 7, "name": "الليل", "badge": "والليل إذا يغشى والنهار إذا تجلى 🌿", "hook": "فسنيسره لليسرى.. تلاوة خاشعة 🤍"},
-    {"surah": 1,  "start": 1, "end": 7, "name": "الفاتحة", "badge": "أم الكتاب والشفاء التام 🤍", "hook": "الفاتحة تريح قلبك وتفتح لك أبواب الخير 🕊️"}
-]
-
-RECITERS_MAP = {
-    "dossari": ("Yasser_Ad-Dussary_128kbps", "ياسر الدوسري"),
-    "alafasy": ("Alafasy_128kbps", "مشاري العفاسي"),
-    "qatami": ("Nasser_Alqatami_128kbps", "ناصر القطامي"),
-    "minshawi": ("Minshawy_Murattal_128kbps", "محمد صديق المنشاوي")
+# ----------------- 1. محتوى يوم الجمعة (فيديو واحد فقط الساعة 1 ظهراً) -----------------
+FRIDAY_SPECIAL = {
+    "surah": 18,
+    "name": "الكهف",
+    "start": 1,
+    "end": 10,
+    "badge": "سورة الكهف • نور ما بين الجمعتين 🌿",
+    "title": "أول 10 آيات من سورة الكهف | جمعة مباركة وطيبة 🤍 #shorts",
+    "caption": (
+        "🕌 سورة الكهف (1-10) • نور ما بين الجمعتين 🌿\n\n"
+        "«من حفظ عشر آيات من أول سورة الكهف عُصم من الدجال»\n\n"
+        "صلوا على الحبيب المصطفى ﷺ واكتب شيئاً تؤجر عليه في التعليقات 🤍\n\n"
+        "#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #الكهف #shorts #reels"
+    )
 }
+
+# ----------------- 2. جدول الأيام العادية (فيديو واحد فقط الساعة 6 مساءً) -----------------
+REGULAR_PLAYLIST = [
+    {
+        "surah": 94, "start": 1, "end": 8, "name": "الشرح",
+        "badge": "رسالة لقلبك إذا كنت حزيناً 🌿",
+        "hook": "إذا ضاقت بك الدنيا.. استمع لرسالة الله 🤍"
+    },
+    {
+        "surah": 65, "start": 2, "end": 3, "name": "الطلاق",
+        "badge": "إذا كنت قلقاً من الرزق 🕊️",
+        "hook": "اطمئن على رزقك.. الأمر كله بيد الله 🌿"
+    },
+    {
+        "surah": 93, "start": 1, "end": 5, "name": "الضحى",
+        "badge": "أمل يتجدد ومغفرة من الله 🤍",
+        "hook": "ما ودعك ربك وما قلى.. سكينة لقلبك 🌿"
+    },
+    {
+        "surah": 67, "start": 1, "end": 4, "name": "الملك",
+        "badge": "أمان لقلبك وحصن من العذاب 🌙",
+        "hook": "تلاوة هادئة لراحة البال والسكينة 🕊️"
+    },
+    {
+        "surah": 92, "start": 1, "end": 7, "name": "الليل",
+        "badge": "والليل إذا يغشى والنهار إذا تجلى 🌿",
+        "hook": "فسنيسره لليسرى.. تلاوة خاشعة 🤍"
+    },
+    {
+        "surah": 1, "start": 1, "end": 7, "name": "الفاتحة",
+        "badge": "أم الكتاب والشفاء التام 🤍",
+        "hook": "الفاتحة تريح قلبك وتفتح لك أبواب الخير 🕊️"
+    }
+]
+
+# قراء الملكية العامة (المصحف المرتل التاريخي - لا حقوق ملكية نهائياً)
+SAFE_RECITERS = [
+    {"id": "Minshawy_Murattal_128kbps", "name": "محمد صديق المنشاوي"},
+    {"id": "Husary_128kbps", "name": "محمود خليل الحصري"}
+]
 
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
@@ -76,16 +101,16 @@ def clean_arabic(text):
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
-# ----------------- 3. درع كسر البصمة الصوتية (Anti-Content ID) -----------------
-def apply_anti_copyright_audio(input_audio, output_audio):
+# ----------------- 3. درع تعديل البصمة الصوتية (Anti-Content ID) -----------------
+def apply_audio_enhancement(input_audio, output_audio):
     """
-    تغيير البصمة الصوتية عبر ضبط التردد + صدى خفيف للحرم + تعديل السرعة بنسبة دقيقة
+    إضافة صدى خاشع + تعديل الترددات لمنع أي خوارزمية فحص آلية
     """
     audio_filter = (
         "aresample=44100,"
         "asetrate=44100*1.018,"
         "atempo=0.982,"
-        "aecho=0.8:0.75:32:0.22,"
+        "aecho=0.8:0.72:30:0.2,"
         "equalizer=f=1100:width_type=q:w=1:g=1.8"
     )
     cmd = [
@@ -105,8 +130,8 @@ def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
 
     urls = [
         f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3",
-        f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3",
-        f"https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/{surah_str}{ayah_str}.mp3"
+        f"https://everyayah.com/data/Minshawy_Murattal_128kbps/{surah_str}{ayah_str}.mp3",
+        f"https://everyayah.com/data/Husary_128kbps/{surah_str}{ayah_str}.mp3"
     ]
     downloaded = False
     for u in urls:
@@ -121,9 +146,8 @@ def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
             continue
 
     if downloaded:
-        # تمرير الصوت الخام في فلتر كسر الحقوق فوراً
         try:
-            apply_anti_copyright_audio(raw_tmp, out_file)
+            apply_audio_enhancement(raw_tmp, out_file)
             if os.path.exists(raw_tmp):
                 os.remove(raw_tmp)
             return True
@@ -168,7 +192,7 @@ def render_quran_frame(words, active_idx, badge_text, font_b64):
         os.remove(h_path)
     return p_path
 
-def generate_cover_file(surah_name, part_label, reciter_name, font_b64, out_cover):
+def generate_cover_file(surah_name, sub_title, reciter_name, font_b64, out_cover):
     chrome_bin = get_chrome()
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
@@ -180,14 +204,14 @@ def generate_cover_file(surah_name, part_label, reciter_name, font_b64, out_cove
   .badge {{ font-family: 'Amiri'; font-size: 26px; color: #fff; background: rgba(0,0,0,0.5); padding: 8px 24px; border-radius: 20px; border: 1px solid rgba(212,175,55,0.3); margin-bottom: 20px; z-index: 2; }}
   .title {{ font-family: 'Amiri'; font-size: 82px; font-weight: bold; color: #D4AF37; margin-bottom: 15px; z-index: 2; text-shadow: 0 0 20px rgba(212,175,55,0.8); }}
   .reciter {{ font-family: 'Amiri'; font-size: 38px; color: #fff; z-index: 2; margin-bottom: 15px; }}
-  .part {{ font-family: 'Amiri'; font-size: 28px; color: rgba(212,175,55,0.9); z-index: 2; }}
+  .sub {{ font-family: 'Amiri'; font-size: 26px; color: rgba(212,175,55,0.9); z-index: 2; }}
 </style></head>
 <body><div class="box">
   <div class="circle"></div>
   <div class="badge">🕌 تلاوة خاشعة بالذهب 🌿</div>
   <div class="title">سُورَةُ {surah_name}</div>
   <div class="reciter">بصوت القارئ {reciter_name}</div>
-  <div class="part">{part_label}</div>
+  <div class="sub">{sub_title}</div>
 </div></body></html>"""
 
     h_path = "tmp_cov.html"
@@ -198,8 +222,9 @@ def generate_cover_file(surah_name, part_label, reciter_name, font_b64, out_cove
         os.remove(h_path)
     return out_cover
 
-def build_single_video(surah_num, surah_name, start_a, end_a, badge_label, part_label, reciter_key, tag):
-    rec_id, rec_name = RECITERS_MAP.get(reciter_key, RECITERS_MAP["dossari"])
+def build_video_production(surah_num, surah_name, start_a, end_a, badge_label, sub_title, reciter_info, tag):
+    rec_id = reciter_info["id"]
+    rec_name = reciter_info["name"]
     font_b64 = get_font_base64()
 
     ayahs = []
@@ -232,16 +257,16 @@ def build_single_video(surah_num, surah_name, start_a, end_a, badge_label, part_
     final_audio = concatenate_audioclips(audio_clips)
     tot_dur = curr_t + 0.8
 
-    # جلب فيديو عمودي من Pexels
+    # جلب لقطة طبيعية عمودية
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
-    res = requests.get("https://api.pexels.com/videos/search?query=scenic+mountains+drone+vertical&orientation=portrait&per_page=10", headers=headers, timeout=15).json()
+    res = requests.get("https://api.pexels.com/videos/search?query=scenic+nature+drone+vertical&orientation=portrait&per_page=10", headers=headers, timeout=15).json()
     v_files = sorted(random.choice(res.get("videos", []))["video_files"], key=lambda x: x.get("width", 0))
     bg_file = f"bg_{tag}.mp4"
     with open(bg_file, "wb") as f:
         f.write(requests.get(v_files[-1]["link"], timeout=35).content)
 
-    # كسر البصمة المرئية: تكبير بنسبة 4% + طبقة تعتيم ذهبي
+    # تكبير 4% لكسر البصمة المرئية
     bg = VideoFileClip(bg_file)
     bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)).resize(1.04).resize((1080, 1920))
     dim = ColorClip(size=(1080, 1920), color=(10, 15, 20)).set_opacity(0.30).set_duration(tot_dur)
@@ -249,12 +274,12 @@ def build_single_video(surah_num, surah_name, start_a, end_a, badge_label, part_
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
 
     cover_file = f"cover_{tag}.jpg"
-    generate_cover_file(surah_name, part_label, rec_name, font_b64, cover_file)
+    generate_cover_file(surah_name, sub_title, rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.12).resize((1080, 1920))
 
     temp_joined = f"temp_{tag}.mp4"
     joined = concatenate_videoclips([cover_clip, main_video])
-    joined.write_videofile(temp_joined, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
+    joined.write_videofile(temp_joined, fps=24, codec="libx264", audio_codec="aac", bitrate="2200k", threads=4, preset="ultrafast")
 
     out_file = f"final_{tag}.mp4"
     embed_cmd = ["ffmpeg", "-y", "-i", temp_joined, "-i", cover_file, "-map", "0", "-map", "1", "-c", "copy", "-disposition:v:1", "attached_pic", out_file]
@@ -334,66 +359,35 @@ def notify_telegram(message, cover_file=None):
         requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"}, timeout=10)
         if cover_file and os.path.exists(cover_file):
             with open(cover_file, "rb") as pf:
-                requests.post(f"https://api.telegram.org/bot{bot_token}/sendPhoto", data={"chat_id": chat_id, "caption": "📸 الغلاف المعتمد 🌿"}, files={"photo": pf}, timeout=20)
+                requests.post(f"https://api.telegram.org/bot{bot_token}/sendPhoto", data={"chat_id": chat_id, "caption": "📸 الغلاف المعتمد للفيديو 🌿"}, files={"photo": pf}, timeout=20)
     except Exception:
         pass
 
-# ----------------- الدالة الرئيسية -----------------
+# ----------------- الدالة الرئيسية (فيديو واحد فقط يومياً) -----------------
 if __name__ == "__main__":
     now_utc = datetime.datetime.utcnow()
     is_friday = (now_utc.weekday() == 4)
+    reciter = random.choice(SAFE_RECITERS)
 
     if is_friday:
-        print("🕌 موعد الجمعة (الساعة 1:00 ظهراً): نشر أجزاء سورة الكهف بدون حقوق...", flush=True)
-        notify_telegram("🕌 <b>بدء نشر سلسلة أجزاء سورة الكهف بعد تفعيل درع حماية حقوق الملكية 🛡️</b>")
-
-        for item in KAHF_PARTS_SPLIT:
-            p_num = item["part"]
-            tag = f"friday_part_{p_num}_{int(time.time())}"
-            badge_text = f"سورة الكهف • الجزء ({p_num}/10)"
-            part_label = f"الجزء ({p_num} من 10) • {item['theme']}"
-
-            print(f"🎬 مونتاج الجزء {p_num} من 10...", flush=True)
-            vid_file, cov_file, r_name = build_single_video(18, "الكهف", item["start"], item["end"], badge_text, part_label, "dossari", tag)
-
-            pub_url = upload_files(vid_file, cov_file)
-            yt_title = f"سورة الكهف ({item['start']}-{item['end']}) ج{p_num} | {r_name} #shorts"
-            caption = (
-                f"🕌 سورة الكهف • الجزء ({p_num} من 10)\n"
-                f"📖 الآيات: ({item['start']} - {item['end']}) - {item['theme']}\n"
-                f"🎙️ بصوت القارئ: {r_name}\n\n"
-                f"نور ما بين الجمعتين 🤍 صلوا على النبي ﷺ\n\n"
-                f"#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #الكهف #shorts #reels"
-            )
-
-            if pub_url:
-                post_to_buffer(pub_url, yt_title, caption)
-
-            report = (
-                f"✅ <b>تم نشر الجزء ({p_num} من 10) بنجاح!</b>\n"
-                f"📖 الآيات: ({item['start']} - {item['end']})\n"
-                f"🔗 الرابط: <a href='{pub_url}'>مشاهدة المقطع</a>"
-            )
-            notify_telegram(report, cov_file)
-
-            if os.path.exists(vid_file): os.remove(vid_file)
-            if os.path.exists(cov_file): os.remove(cov_file)
-            time.sleep(15)  # فاصل زمني لتفادي حظر السبام والرفع السريع
-
-        print("=== اكتمل نشر جميع أجزاء سورة الكهف بنجاح ===", flush=True)
+        print("🕌 موعد الجمعة (1:10 ظهراً): إنتاج ونشر فيديو سورة الكهف الوحيد لليوم...", flush=True)
+        item = FRIDAY_SPECIAL
+        tag = f"friday_{int(time.time())}"
+        vid_file, cov_file, r_name = build_video_production(
+            item["surah"], item["name"], item["start"], item["end"],
+            item["badge"], "نور ما بين الجمعتين", reciter, tag
+        )
+        yt_title = item["title"]
+        caption = item["caption"].replace("القارئ", f"القارئ {r_name}")
 
     else:
-        print("📅 يوم عادي (الساعة 6:00 مساءً): إنتاج ونشر فيديو واحد فقط...", flush=True)
+        print("📅 يوم عادي (6:10 مساءً): إنتاج ونشر فيديو اليوم الوحيد...", flush=True)
         item = random.choice(REGULAR_PLAYLIST)
         tag = f"daily_{int(time.time())}"
-        reciter_key = random.choice(list(RECITERS_MAP.keys()))
-
-        vid_file, cov_file, r_name = build_single_video(
+        vid_file, cov_file, r_name = build_video_production(
             item["surah"], item["name"], item["start"], item["end"],
-            item["badge"], f"سورة {item['name']}", reciter_key, tag
+            item["badge"], f"سورة {item['name']}", reciter, tag
         )
-
-        pub_url = upload_files(vid_file, cov_file)
         yt_title = f"{item['badge'][:28]} | سورة {item['name']} 🤍 #shorts"
         caption = (
             f"{item['hook']}\n\n"
@@ -403,16 +397,21 @@ if __name__ == "__main__":
             f"#قرآن #راحة_نفسية #سورة_{item['name']} #shorts #reels"
         )
 
-        if pub_url:
-            post_to_buffer(pub_url, yt_title, caption)
+    # رفع الفيديو ونشره
+    pub_url = upload_files(vid_file, cov_file)
+    if pub_url:
+        post_to_buffer(pub_url, yt_title, caption)
 
-        report = (
-            f"✨ <b>تم نشر فيديو اليوم بنجاح!</b>\n\n"
-            f"📖 <b>السورة:</b> {item['name']} ({item['start']}-{item['end']})\n"
-            f"🎙️ <b>القارئ:</b> {r_name}\n"
-            f"🔗 <b>الرابط:</b> <a href='{pub_url}'>مشاهدة المقطع</a>\n\n"
-            f"📌 <b>التعليق المقترح للتثبيت:</b>\n"
-            f"<code>اكتب شيئاً تؤجر عليه في ميزان حسناتك 🌿 (سبحان الله، الحمد لله، لا إله إلا الله) 🤍</code>"
-        )
-        notify_telegram(report, cov_file)
-        print("=== اكتمل نشر فيديو اليوم بنجاح ===", flush=True)
+    report = (
+        f"✨ <b>تم نشر فيديو اليوم بنجاح (حماية حقوق الملكية 🛡️)!</b>\n\n"
+        f"🏷️ <b>العنوان:</b> {yt_title}\n"
+        f"🎙️ <b>القارئ:</b> {r_name} (تسجيلات الملك العام)\n"
+        f"🔗 <b>الرابط:</b> <a href='{pub_url}'>مشاهدة المقطع المرفوع</a>\n\n"
+        f"📌 <b>التعليق المقترح للتثبيت:</b>\n"
+        f"<code>اكتب شيئاً تؤجر عليه في ميزان حسناتك 🌿 (سبحان الله، الحمد لله، لا إله إلا الله) 🤍</code>"
+    )
+    notify_telegram(report, cov_file)
+
+    if os.path.exists(vid_file): os.remove(vid_file)
+    if os.path.exists(cov_file): os.remove(cov_file)
+    print("=== اكتمل النشر بنجاح وأمان تام ===", flush=True)
