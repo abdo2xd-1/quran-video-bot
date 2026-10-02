@@ -28,15 +28,21 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 GEMINI_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
-# سيرفرات التلاوة الكاملة المباشرة بدون تقطيع (MP3Quran CDN)
-FULL_SURAHS_SERVERS = {
-    "dossari": "https://server11.mp3quran.net/yasser/{:03d}.mp3",
-    "alafasy": "https://server8.mp3quran.net/afs/{:03d}.mp3",
-    "qatami": "https://server6.mp3quran.net/qtm/{:03d}.mp3",
-    "minshawi": "https://server10.mp3quran.net/minsh/{:03d}.mp3"
-}
+# تقسيم سورة الكهف إلى 10 أجزاء شورتس متناسقة سياقياً
+KAHF_PARTS_SPLIT = [
+    {"part": 1, "start": 1, "end": 10, "theme": "العصمة من فتن الدجال"},
+    {"part": 2, "start": 11, "end": 16, "theme": "دخول الكهف وثبات الفتية"},
+    {"part": 3, "start": 17, "end": 22, "theme": "نومهم في الكهف وقدرة الله"},
+    {"part": 4, "start": 23, "end": 31, "theme": "ولا تقولن لشيء إني فاعل ذلك غدا"},
+    {"part": 5, "start": 32, "end": 44, "theme": "قصة صاحب الجنتين"},
+    {"part": 6, "start": 45, "end": 53, "theme": "مثل الحياة الدنيا ومصير المجرمين"},
+    {"part": 7, "start": 54, "end": 64, "theme": "رحلة موسى عليه السلام وفتاه"},
+    {"part": 8, "start": 65, "end": 82, "theme": "موسى والعبد الصالح الخضر"},
+    {"part": 9, "start": 83, "end": 98, "theme": "قصة ذي القرنين ويأجوج ومأجوج"},
+    {"part": 10, "start": 99, "end": 110, "theme": "نفخ الصور وجنات الفردوس"}
+]
 
-RECITERS_NAMES = {
+RECITERS_MAP = {
     "dossari": ("Yasser_Ad-Dussary_128kbps", "ياسر الدوسري"),
     "alafasy": ("Alafasy_128kbps", "مشاري العفاسي"),
     "qatami": ("Nasser_Alqatami_128kbps", "ناصر القطامي"),
@@ -57,151 +63,230 @@ def get_font_base64():
             return base64.b64encode(f.read()).decode("ascii")
     return ""
 
+def clean_arabic(text):
+    for s in ['۝', '۞', 'ۚ', 'ۖ', 'ۗ', 'ۘ', 'ۛ', 'ۜ', '\u06dd', '\u06de', '\u06d6', '\u06d7', '\u06d8', '\u06d9', '\u06da', '\u06db', '\u06dc']:
+        text = text.replace(s, '')
+    return text.strip()
+
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
-# ----------------- 1. محرك فهم النوايا (Gemini AI + Local Safety) -----------------
-def analyze_user_intent(user_text):
-    text_lower = user_text.lower()
-    is_full_explicit = any(k in text_lower for k in ["كامل", "كامله", "كاملة", "طامل", "طامله", "طاملة"])
-    
-    if "الكهف" in text_lower:
-        if is_full_explicit or "شورت" not in text_lower:
-            return {"action": "quran_full", "surah_name": "الكهف", "surah_number": 18, "reciter": "dossari"}
-        else:
-            return {"action": "quran_shorts", "surah_name": "الكهف", "surah_number": 18, "start": 1, "end": 10, "reciter": "dossari"}
+def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
+    surah_str = f"{surah_num:03d}"
+    ayah_str = f"{ayah_num:03d}"
+    urls = [
+        f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3",
+        f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3",
+        f"https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/{surah_str}{ayah_str}.mp3"
+    ]
+    for u in urls:
+        try:
+            r = requests.get(u, timeout=20)
+            if r.status_code == 200 and len(r.content) > 4000 and not r.content.startswith(b"<!DOCTYPE"):
+                with open(out_file, "wb") as f:
+                    f.write(r.content)
+                return True
+        except Exception:
+            continue
+    return False
 
-    if "الملك" in text_lower:
-        return {"action": "quran_full" if is_full_explicit else "quran_shorts", "surah_name": "الملك", "surah_number": 67, "start": 1, "end": 5, "reciter": "dossari"}
-
-    if "الشرح" in text_lower:
-        return {"action": "quran_shorts", "surah_name": "الشرح", "surah_number": 94, "start": 1, "end": 8, "reciter": "dossari"}
-
-    if not GEMINI_KEY:
-        return {"action": "chat", "reply": "أهلاً بك! يرجى إضافة GEMINI_API_KEY في إعدادات GitHub Secrets."}
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
-    prompt = (
-        "أنت Gemini AI، مساعد ذكي وصانع محتوى.\n"
-        "افحص رسالة المستخدم:\n"
-        "- إذا طلب سورة قرآنية: أرجع JSON يوضح هل هي كاملة أم شورتس.\n"
-        "- إذا طلب فيديو عام (فضاء، علم، تحفيز): أرجع action='general_video' مع عنوان وسيناريو 3 جمل.\n"
-        "- إذا كان كلاماً عاماً أو سؤالاً: أرجع action='chat' مع ردك المفصل واللطيف.\n\n"
-        f"رسالة المستخدم: {user_text}\n"
-        "أجب حصراً بصيغة JSON:\n"
-        "{\"action\": \"quran_full\"|\"quran_shorts\"|\"general_video\"|\"chat\", \"reply\": \"...\", \"surah_name\": \"...\", \"surah_number\": 18, \"title\": \"...\"}"
-    )
-
-    try:
-        res = requests.post(
-            url, 
-            json={"contents": [{"parts": [{"text": prompt}]}]}, 
-            params={"key": GEMINI_KEY},
-            headers={"Content-Type": "application/json"},
-            timeout=15
-        ).json()
-        parsed = json.loads(res["candidates"][0]["content"]["parts"][0]["text"])
-        return parsed
-    except Exception:
-        return {"action": "chat", "reply": "أهلاً بك يا غالي! أرسل لي اسم السورة التي تريدها أو فكرة الفيديو 🤍"}
-
-# ----------------- 2. تجهيز السورة كاملة والغلاف المعتمد -----------------
-def generate_full_surah(surah_num, surah_name, reciter_key, tag):
-    rec_key = reciter_key if reciter_key in FULL_SURAHS_SERVERS else "dossari"
-    rec_name = RECITERS_NAMES.get(rec_key, ("Dussary", "ياسر الدوسري"))[1]
-    
-    aud_url = FULL_SURAHS_SERVERS[rec_key].format(surah_num)
-    aud_path = f"full_{surah_num}_{tag}.mp3"
-    
-    # تنزيل ملف التلاوة الكاملة
-    r = requests.get(aud_url, timeout=90)
-    with open(aud_path, "wb") as f:
-        f.write(r.content)
-
-    # تصميم الغلاف المعتمد بدقة 1080x1920
-    cover_path = f"cover_full_{tag}.jpg"
-    font_b64 = get_font_base64()
+def render_quran_frame(words, active_idx, badge_text, font_b64):
     chrome_bin = get_chrome()
-    
+    words_html = []
+    for i, w in enumerate(words):
+        if i == active_idx:
+            words_html.append(f'<span style="color:#D4AF37; transform:scale(1.08); text-shadow:0 0 16px rgba(212,175,55,0.95);">{w}</span>')
+        else:
+            words_html.append(f'<span style="color:#FFFFFF; text-shadow:0 0 10px rgba(0,0,0,0.95);">{w}</span>')
+
+    full_verse = " ".join(words_html)
+    font_size = 68 if len(words) <= 7 else (52 if len(words) <= 14 else 42)
+
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
   @font-face {{ font-family: 'Amiri'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
-  body {{ width: 1080px; height: 1920px; background: radial-gradient(circle at center, #151d28 0%, #0a0d13 100%); display: flex; justify-content: center; align-items: center; margin: 0; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ width: 1080px; height: 1920px; background: transparent; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }}
+  .badge {{ position: absolute; top: 190px; background: rgba(10,14,20,0.7); border: 1px solid rgba(212,175,55,0.45); color: #fff; font-family: 'Amiri'; font-size: 26px; padding: 10px 28px; border-radius: 30px; }}
+  .ayah {{ direction: rtl; text-align: center; font-family: 'Amiri'; font-size: {font_size}px; font-weight: bold; line-height: 1.95; max-width: 930px; margin: auto 0; }}
+  .watermark {{ position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); font-family: 'Amiri'; font-size: 24px; color: rgba(255,255,255,0.45); direction: ltr; }}
+</style></head>
+<body>
+  <div class="badge">🎧 {badge_text} 🌿</div>
+  <div class="ayah">{full_verse}</div>
+  <div class="watermark">@quran_reels</div>
+</body></html>"""
+
+    h_path, p_path = f"tmp_{active_idx}.html", f"frame_{active_idx}.png"
+    with open(h_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    subprocess.run([chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", "--default-background-color=00000000", f"--screenshot={os.path.abspath(p_path)}", f"file://{os.path.abspath(h_path)}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.path.exists(h_path):
+        os.remove(h_path)
+    return p_path
+
+def generate_cover_file(surah_name, part_num, total_parts, reciter_name, font_b64, out_cover):
+    chrome_bin = get_chrome()
+    html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+<style>
+  @font-face {{ font-family: 'Amiri'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ width: 1080px; height: 1920px; background: radial-gradient(circle at center, #151d28 0%, #0a0d13 100%); display: flex; justify-content: center; align-items: center; position: relative; }}
   .box {{ width: 1080px; height: 1080px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }}
   .circle {{ position: absolute; width: 780px; height: 780px; border-radius: 50%; border: 2px solid rgba(212, 175, 55, 0.45); }}
-  .badge {{ font-family: 'Amiri'; font-size: 28px; color: #fff; background: rgba(0,0,0,0.5); padding: 8px 24px; border-radius: 20px; margin-bottom: 20px; }}
-  .title {{ font-family: 'Amiri'; font-size: 85px; font-weight: bold; color: #D4AF37; margin-bottom: 15px; }}
-  .reciter {{ font-family: 'Amiri'; font-size: 40px; color: #fff; }}
+  .badge {{ font-family: 'Amiri'; font-size: 26px; color: #fff; background: rgba(0,0,0,0.5); padding: 8px 24px; border-radius: 20px; border: 1px solid rgba(212,175,55,0.3); margin-bottom: 20px; z-index: 2; }}
+  .title {{ font-family: 'Amiri'; font-size: 82px; font-weight: bold; color: #D4AF37; margin-bottom: 15px; z-index: 2; text-shadow: 0 0 20px rgba(212,175,55,0.8); }}
+  .reciter {{ font-family: 'Amiri'; font-size: 38px; color: #fff; z-index: 2; margin-bottom: 15px; }}
+  .part {{ font-family: 'Amiri'; font-size: 28px; color: rgba(212,175,55,0.9); z-index: 2; }}
 </style></head>
-<body><div class="box"><div class="circle"></div><div class="badge">🕌 تلاوة خاشعة كاملة 🌿</div><div class="title">سُورَةُ {surah_name} كَامِلَةً</div><div class="reciter">بصوت القارئ {rec_name}</div></div></body></html>"""
+<body><div class="box">
+  <div class="circle"></div>
+  <div class="badge">🕌 نور ما بين الجمعتين 🌿</div>
+  <div class="title">سُورَةُ {surah_name}</div>
+  <div class="reciter">بصوت القارئ {reciter_name}</div>
+  <div class="part">الجزء ({part_num} من {total_parts}) • تظليل الذهب</div>
+</div></body></html>"""
 
-    with open("tmp_full_cov.html", "w", encoding="utf-8") as f:
+    h_path = f"tmp_cov_{part_num}.html"
+    with open(h_path, "w", encoding="utf-8") as f:
         f.write(html)
-    subprocess.run([chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", f"--screenshot={os.path.abspath(cover_path)}", f"file://{os.path.abspath('tmp_full_cov.html')}"], check=True)
+    subprocess.run([chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", f"--screenshot={os.path.abspath(out_cover)}", f"file://{os.path.abspath(h_path)}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.path.exists(h_path):
+        os.remove(h_path)
+    return out_cover
 
-    return aud_path, cover_path, rec_name
+def build_single_short(surah_num, surah_name, start_a, end_a, part_num, total_parts, reciter_key, tag):
+    rec_id, rec_name = RECITERS_MAP.get(reciter_key, RECITERS_MAP["dossari"])
+    badge_label = f"سورة {surah_name} • الجزء ({part_num}/{total_parts})"
 
-# ----------------- 3. معالج رسائل تليجرام -----------------
+    ayahs = []
+    font_b64 = get_font_base64()
+    for a in range(start_a, end_a + 1):
+        t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=15).json()
+        txt = clean_arabic(t_res.get("data", {}).get("text", ""))
+        if a == 1 and surah_num != 1:
+            txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
+
+        aud_file = f"aud_{tag}_{part_num}_{a}.mp3"
+        download_ayah_safe(surah_num, a, rec_id, aud_file)
+        ayahs.append({"text": txt, "audio": aud_file})
+
+    audio_clips, text_clips = [], []
+    curr_t = 0.0
+
+    for ay in ayahs:
+        ac = AudioFileClip(ay["audio"])
+        audio_clips.append(ac)
+        words = ay["text"].split()
+        tot_chars = sum(len(w) for w in words)
+        w_start = curr_t
+        for idx, w in enumerate(words):
+            w_dur = (len(w) / tot_chars) * ac.duration
+            frame_img = render_quran_frame(words, idx, badge_label, font_b64)
+            text_clips.append(ImageClip(frame_img).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
+            w_start += w_dur
+        curr_t += ac.duration
+
+    final_audio = concatenate_audioclips(audio_clips)
+    tot_dur = curr_t + 0.8
+
+    # جلب فيديو طبيعي
+    pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
+    headers = {"Authorization": pexels_key} if pexels_key else {}
+    res = requests.get("https://api.pexels.com/videos/search?query=scenic+mountains+drone+vertical&orientation=portrait&per_page=8", headers=headers, timeout=15).json()
+    v_files = sorted(random.choice(res.get("videos", []))["video_files"], key=lambda x: x.get("width", 0))
+    bg_file = f"bg_{tag}_{part_num}.mp4"
+    with open(bg_file, "wb") as f:
+        f.write(requests.get(v_files[-1]["link"], timeout=35).content)
+
+    bg = VideoFileClip(bg_file)
+    bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)).resize((1080, 1920))
+    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.22).set_duration(tot_dur)
+
+    main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
+
+    cover_file = f"cover_{tag}_{part_num}.jpg"
+    generate_cover_file(surah_name, part_num, total_parts, rec_name, font_b64, cover_file)
+    cover_clip = ImageClip(cover_file).set_duration(0.12).resize((1080, 1920))
+
+    temp_joined = f"temp_{tag}_{part_num}.mp4"
+    joined = concatenate_videoclips([cover_clip, main_video])
+    joined.write_videofile(temp_joined, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
+
+    out_file = f"short_{surah_name}_part{part_num}.mp4"
+    embed_cmd = ["ffmpeg", "-y", "-i", temp_joined, "-i", cover_file, "-map", "0", "-map", "1", "-c", "copy", "-disposition:v:1", "attached_pic", out_file]
+    try:
+        subprocess.run(embed_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        out_file = temp_joined
+
+    # تنظيف الملفات المؤقتة لتوفير المساحة
+    for ay in ayahs:
+        if os.path.exists(ay["audio"]): os.remove(ay["audio"])
+    if os.path.exists(bg_file): os.remove(bg_file)
+    if os.path.exists(temp_joined) and temp_joined != out_file: os.remove(temp_joined)
+
+    return out_file, cover_file, rec_name
+
+# ----------------- معالج الرسائل -----------------
 async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text.strip()
+    user_text = update.message.text.strip().lower()
     tag = f"{update.effective_user.id}_{int(time.time())}"
 
-    decision = await asyncio.to_thread(analyze_user_intent, user_text)
-    action = decision.get("action", "chat")
-
-    if action == "quran_full":
-        s_name = decision.get("surah_name", "الكهف")
-        s_num = decision.get("surah_number", 18)
-        reciter = decision.get("reciter", "dossari")
-
+    # طلب تقسيم سورة الكهف إلى شورتس كاملة
+    if "الكهف" in user_text and any(k in user_text for k in ["قسم", "شورت", "شورتس", "اجزاء", "أجزاء", "كلها"]):
         status_msg = await update.message.reply_text(
-            f"🕌 <b>أمر مؤكد:</b> جاري جلب <b>سورة {s_name} كاملة</b> بصوت القارئ مع الغلاف الرسمي...\n"
-            f"⏳ انتظر ثوانٍ معدودة...",
+            "🚀 <b>تم تفعيل مُقسّم سورة الكهف الشامل!</b>\n\n"
+            "جاري الآن إنتاج سورة الكهف كاملة مقسمة إلى <b>10 أجزاء شورتس</b> مرقمة بالتظليل الذهبي...\n"
+            "⏳ سأرسل لك كل جزء فور اكتمال مونتاجه مباشرة!",
             parse_mode="HTML"
         )
-        try:
-            aud_file, cov_file, r_name = await asyncio.to_thread(
-                generate_full_surah, s_num, s_name, reciter, tag
-            )
-            with open(aud_file, "rb") as af, open(cov_file, "rb") as cf:
+
+        for item in KAHF_PARTS_SPLIT:
+            p_num = item["part"]
+            try:
+                vid_path, cov_path, r_name = await asyncio.to_thread(
+                    build_single_short, 18, "الكهف", item["start"], item["end"], p_num, 10, "dossari", tag
+                )
                 caption = (
-                    f"🕌 <b>سورة {s_name} كاملة</b>\n"
+                    f"🕌 <b>سورة الكهف • الجزء ({p_num} من 10)</b>\n"
+                    f"📖 الآيات: ({item['start']} - {item['end']})\n"
+                    f"🌿 الموضوع: {item['theme']}\n"
                     f"🎙️ بصوت القارئ: {r_name}\n\n"
-                    f"✨ تلاوة نقية كاملة تريح القلب • نور ما بين الجمعتين 🌿"
+                    f"#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #shorts #reels"
                 )
-                await update.message.reply_audio(
-                    audio=af,
-                    thumbnail=cf,
-                    title=f"سورة {s_name} كاملة",
-                    performer=r_name,
-                    caption=caption,
-                    parse_mode="HTML",
-                    read_timeout=180,
-                    write_timeout=180
-                )
-            await status_msg.delete()
-        except Exception as e:
-            await status_msg.edit_text(f"❌ حدث خطأ أثناء التنزيل: {e}")
+                with open(vid_path, "rb") as vf, open(cov_path, "rb") as cf:
+                    await update.message.reply_video(video=vf, thumbnail=cf, caption=caption, parse_mode="HTML")
 
-    elif action == "quran_shorts":
-        s_name = decision.get("surah_name", "الكهف")
-        await update.message.reply_text(f"🎬 جاري إنتاج مقطع شورتس لسورة {s_name} بالتظليل الذهبي...")
+                # حذف الملفات بعد الإرسال للحفاظ على نظافة السيرفر
+                if os.path.exists(vid_path): os.remove(vid_path)
+                if os.path.exists(cov_path): os.remove(cov_path)
+            except Exception as e:
+                await update.message.reply_text(f"⚠️ تعذر مونتاج الجزء {p_num}: {e}")
 
-    elif action == "general_video":
-        title = decision.get("title", "فيديو اليوم")
-        await update.message.reply_text(f"🚀 جاري إنتاج فيديو بالذكاء الاصطناعي بعنوان: <b>{title}</b>...", parse_mode="HTML")
+        await status_msg.edit_text("✅ <b>اكتمل إنتاج وإرسال جميع أجزاء سورة الكهف (10 مقاطع شورتس) بنجاح!</b> 🌿", parse_mode="HTML")
+        return
 
-    else:
-        reply_text = decision.get("reply", "أهلاً بك! كيف يمكنني مساعدتك اليوم؟ 🤍")
-        await update.message.reply_text(reply_text)
+    # طلب جزء محدد فقط (مثال: الجزء الأول)
+    if "الكهف" in user_text:
+        item = KAHF_PARTS_SPLIT[0]
+        status_msg = await update.message.reply_text("⏳ جاري إنتاج مقطع شورتس لسورة الكهف (الجزء 1)...")
+        vid_path, cov_path, r_name = await asyncio.to_thread(
+            build_single_short, 18, "الكهف", item["start"], item["end"], 1, 10, "dossari", tag
+        )
+        with open(vid_path, "rb") as vf, open(cov_path, "rb") as cf:
+            await update.message.reply_video(video=vf, thumbnail=cf, caption=f"سورة الكهف - الجزء 1 من 10 بصوت {r_name} 🌿", parse_mode="HTML")
+        await status_msg.delete()
+        return
+
+    await update.message.reply_text("أهلاً بك! اكتب: <b>«قسم سورة الكهف كلها شورتس»</b> وسأقوم بمونتاج وإرسال أجزاء السورة كاملة تباعاً 🤍", parse_mode="HTML")
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        f"أهلاً بك يا {update.effective_user.first_name} في <b>بوت الذكاء الاصطناعي الشامل</b> 🤖\n\n"
-        "أوامر سريعة جاهزة:\n"
-        "• اكتب: <code>نزلي سورة الكهف كاملة</code> ➔ تصلك السورة كاملة فوراً مع الغلاف الرسمي 🤍\n"
-        "• اكتب: <code>شورتس سورة الكهف</code> ➔ ينتج مقطع ريلز مخصص للنشر.\n"
-        "• اسألني أي سؤال أو اطلب أي فيديو وسأنفذه لك مباشرة!"
+        f"أهلاً بك يا {update.effective_user.first_name} في <b>بوت تقسيم ومونتاج الشورتس الذكي</b> 🎬\n\n"
+        "✨ <b>الأمر السحري:</b>\n"
+        "اكتب: <code>قسم سورة الكهف كلها شورتس</code>\n"
+        "وسيقوم البوت تلقائياً بتقسيم السورة إلى 10 مقاطع ريلز وشورتس مرقمة ومونتاجها وإرسالها لك واحدة تلو الأخرى!"
     )
     await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -210,18 +295,11 @@ def main():
         print("خطأ: TELEGRAM_BOT_TOKEN مفقود!", flush=True)
         sys.exit(1)
 
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .read_timeout(180)
-        .write_timeout(180)
-        .connect_timeout(60)
-        .build()
-    )
+    app = Application.builder().token(BOT_TOKEN).read_timeout(180).write_timeout(180).build()
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
 
-    print("🚀 تم تشغيل البوت الذكي بنجاح 24/7...", flush=True)
+    print("🚀 تم تشغيل محرك تقسيم الشورتس التلقائي 24/7...", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
