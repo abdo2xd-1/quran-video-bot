@@ -4,7 +4,7 @@ on:
   schedule:
     # يعمل مرة واحدة يومياً في تمام الساعة 6:00 مساءً بتوقيت مصر (15:00 UTC)
     - cron: '0 15 * * *'
-  workflow_dispatch: # تشغيل يدوي في أي وقت
+  workflow_dispatch: # تشغيل يدوي في أي وقت بضغطة زر
 
 jobs:
   publish-daily-video:
@@ -29,7 +29,7 @@ jobs:
       - name: Install Python Requirements
         run: |
           pip install --upgrade pip
-          pip install requests moviepy Pillow
+          pip install requests "moviepy==1.0.3" Pillow imageio-ffmpeg
 
       - name: Run Production & Publish (1 Video)
         env:
