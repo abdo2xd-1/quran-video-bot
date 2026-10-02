@@ -60,11 +60,9 @@ def get_font_base64():
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
-# ----------------- 1. محرك فهم النوايا الذكي (Gemini + Local Safety Engine) -----------------
+# ----------------- 1. محرك فهم النوايا (Gemini AI + Local Safety) -----------------
 def analyze_user_intent(user_text):
     text_lower = user_text.lower()
-    
-    # 1. كشف طلبات السور المباشرة فورياً (حتى لو تعطل سيرفر Gemini)
     is_full_explicit = any(k in text_lower for k in ["كامل", "كامله", "كاملة", "طامل", "طامله", "طاملة"])
     
     if "الكهف" in text_lower:
@@ -79,9 +77,8 @@ def analyze_user_intent(user_text):
     if "الشرح" in text_lower:
         return {"action": "quran_shorts", "surah_name": "الشرح", "surah_number": 94, "start": 1, "end": 8, "reciter": "dossari"}
 
-    # 2. استدعاء Gemini لباقي الأسئلة والمواضيع العامة
     if not GEMINI_KEY:
-        return {"action": "chat", "reply": "أهلاً بك! للتحدث معي بالذكاء الاصطناعي يرجى التأكد من إضافة GEMINI_API_KEY في إعدادات GitHub."}
+        return {"action": "chat", "reply": "أهلاً بك! يرجى إضافة GEMINI_API_KEY في إعدادات GitHub Secrets."}
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
     prompt = (
@@ -96,13 +93,19 @@ def analyze_user_intent(user_text):
     )
 
     try:
-        res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"response_mime_type": "application/json"}}, timeout=15).json()
+        res = requests.post(
+            url, 
+            json={"contents": [{"parts": [{"text": prompt}]}]}, 
+            params={"key": GEMINI_KEY},
+            headers={"Content-Type": "application/json"},
+            timeout=15
+        ).json()
         parsed = json.loads(res["candidates"][0]["content"]["parts"][0]["text"])
         return parsed
     except Exception:
-        return {"action": "chat", "reply": "أهلاً بك يا غالي! أرسل لي اسم السورة التي تريدها أو موضوع الفيديو الذي تود إنتاجه فوراً 🤍"}
+        return {"action": "chat", "reply": "أهلاً بك يا غالي! أرسل لي اسم السورة التي تريدها أو فكرة الفيديو 🤍"}
 
-# ----------------- 2. تجهيز سورة كاملة مع الغلاف الملكي المعتمد -----------------
+# ----------------- 2. تجهيز السورة كاملة والغلاف المعتمد -----------------
 def generate_full_surah(surah_num, surah_name, reciter_key, tag):
     rec_key = reciter_key if reciter_key in FULL_SURAHS_SERVERS else "dossari"
     rec_name = RECITERS_NAMES.get(rec_key, ("Dussary", "ياسر الدوسري"))[1]
@@ -110,10 +113,12 @@ def generate_full_surah(surah_num, surah_name, reciter_key, tag):
     aud_url = FULL_SURAHS_SERVERS[rec_key].format(surah_num)
     aud_path = f"full_{surah_num}_{tag}.mp3"
     
-    r = requests.get(aud_url, timeout=60)
+    # تنزيل ملف التلاوة الكاملة
+    r = requests.get(aud_url, timeout=90)
     with open(aud_path, "wb") as f:
         f.write(r.content)
 
+    # تصميم الغلاف المعتمد بدقة 1080x1920
     cover_path = f"cover_full_{tag}.jpg"
     font_b64 = get_font_base64()
     chrome_bin = get_chrome()
@@ -128,15 +133,15 @@ def generate_full_surah(surah_num, surah_name, reciter_key, tag):
   .title {{ font-family: 'Amiri'; font-size: 85px; font-weight: bold; color: #D4AF37; margin-bottom: 15px; }}
   .reciter {{ font-family: 'Amiri'; font-size: 40px; color: #fff; }}
 </style></head>
-<body><div class="box"><div class="circle"></div><div class="badge">🕌 تلاوة خاشعة كاملة 🌿</div><div class="title">سُورَةُ {surah_name} كَامِلَةً</div><div class="reciter">بصوت القارئ {reciter_name}</div></div></body></html>"""
+<body><div class="box"><div class="circle"></div><div class="badge">🕌 تلاوة خاشعة كاملة 🌿</div><div class="title">سُورَةُ {surah_name} كَامِلَةً</div><div class="reciter">بصوت القارئ {rec_name}</div></div></body></html>"""
 
-    with open("tmp_cov.html", "w", encoding="utf-8") as f:
+    with open("tmp_full_cov.html", "w", encoding="utf-8") as f:
         f.write(html)
-    subprocess.run([chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", f"--screenshot={os.path.abspath(cover_path)}", f"file://{os.path.abspath('tmp_cov.html')}"], check=True)
+    subprocess.run([chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", f"--screenshot={os.path.abspath(cover_path)}", f"file://{os.path.abspath('tmp_full_cov.html')}"], check=True)
 
     return aud_path, cover_path, rec_name
 
-# ----------------- 3. معالج الرسائل في تليجرام -----------------
+# ----------------- 3. معالج رسائل تليجرام -----------------
 async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text.strip()
     tag = f"{update.effective_user.id}_{int(time.time())}"
@@ -150,8 +155,8 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
         reciter = decision.get("reciter", "dossari")
 
         status_msg = await update.message.reply_text(
-            f"🕌 <b>أمر مؤكد:</b> جاري جلب <b>سورة {s_name} كاملة</b> بصوت الشيخ ياسر الدوسري مع الغلاف الرسمي...\n"
-            f"⏳ انتظر بضع ثوانٍ...",
+            f"🕌 <b>أمر مؤكد:</b> جاري جلب <b>سورة {s_name} كاملة</b> بصوت القارئ مع الغلاف الرسمي...\n"
+            f"⏳ انتظر ثوانٍ معدودة...",
             parse_mode="HTML"
         )
         try:
@@ -170,7 +175,9 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
                     title=f"سورة {s_name} كاملة",
                     performer=r_name,
                     caption=caption,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
+                    read_timeout=180,
+                    write_timeout=180
                 )
             await status_msg.delete()
         except Exception as e:
@@ -185,7 +192,6 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(f"🚀 جاري إنتاج فيديو بالذكاء الاصطناعي بعنوان: <b>{title}</b>...", parse_mode="HTML")
 
     else:
-        # رد المحادثة الطبيعي
         reply_text = decision.get("reply", "أهلاً بك! كيف يمكنني مساعدتك اليوم؟ 🤍")
         await update.message.reply_text(reply_text)
 
@@ -204,11 +210,18 @@ def main():
         print("خطأ: TELEGRAM_BOT_TOKEN مفقود!", flush=True)
         sys.exit(1)
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .read_timeout(180)
+        .write_timeout(180)
+        .connect_timeout(60)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
 
-    print("🚀 تم تشغيل البوت الذكي بنظام الفهم الفوري والحماية من التعليق 24/7...", flush=True)
+    print("🚀 تم تشغيل البوت الذكي بنجاح 24/7...", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
