@@ -4,7 +4,7 @@ on:
   schedule:
     # يعمل مرة واحدة يومياً في تمام الساعة 6:00 مساءً بتوقيت مصر (15:00 UTC)
     - cron: '0 15 * * *'
-  workflow_dispatch: # يتيح لك تشغيله يدوياً في أي وقت بضغطة زر
+  workflow_dispatch: # تشغيل يدوي في أي وقت
 
 jobs:
   publish-daily-video:
@@ -21,10 +21,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies & Chromium
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg chromium-browser fonts-amiri
+          sudo apt-get install -y ffmpeg
 
       - name: Install Python Requirements
         run: |
