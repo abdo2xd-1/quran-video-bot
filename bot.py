@@ -8,9 +8,7 @@ import shutil
 import asyncio
 import subprocess
 import requests
-from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 )
@@ -20,34 +18,51 @@ from moviepy.editor import (
 )
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-ADMIN_ID = os.getenv("ADMIN_CHAT_ID", "").strip()
+GEMINI_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
-
-# قاموس شامل للسور الشائعة والقصيرة للبحث السريع بالاسم
-SURAHS_MAP = {
-    "الفاتحة": (1, 1, 7), "البقرة": (2, 255, 255), "الكهف": (18, 1, 4),
-    "طه": (20, 1, 8), "الرعد": (13, 28, 28), "يس": (36, 1, 6),
-    "الرحمن": (55, 1, 7), "الواقعة": (56, 1, 6), "الملك": (67, 1, 5),
-    "النبأ": (78, 1, 5), "النازعات": (79, 1, 5), "الضحى": (93, 1, 8),
-    "الشرح": (94, 1, 8), "التين": (95, 1, 8), "العلق": (96, 1, 5),
-    "القدر": (97, 1, 5), "البينة": (98, 1, 5), "الزلزلة": (99, 1, 8),
-    "العاديات": (100, 1, 8), "القارعة": (101, 1, 8), "التكاثر": (102, 1, 8),
-    "العصر": (103, 1, 3), "الهمزة": (104, 1, 9), "الفيل": (105, 1, 5),
-    "قريش": (106, 1, 4), "الماعون": (107, 1, 7), "الكوثر": (108, 1, 3),
-    "الكافرون": (109, 1, 6), "النصر": (110, 1, 3), "المسد": (111, 1, 5),
-    "الإخلاص": (112, 1, 4), "اخلاص": (112, 1, 4), "الفلق": (113, 1, 5),
-    "الناس": (114, 1, 6), "الليل": (92, 1, 7), "البلد": (90, 1, 6),
-    "الشمس": (91, 1, 6), "الطلاق": (65, 2, 3)
-}
 
 RECITERS = {
     "dossari": ("Dussary_128kbps", "ياسر الدوسري"),
     "qatami": ("Nasser_Alqatami_128kbps", "ناصر القطامي"),
     "abbad": ("Fares_Abbad_64kbps", "فارس عباد"),
     "muaiqly": ("MaherAlMuaiqly128kbps", "ماهر المعيقلي"),
-    "alafasy": ("Alafasy_128kbps", "مشاري العفاسي")
+    "alafasy": ("Alafasy_128kbps", "مشاري العفاسي"),
+    "minshawi": ("Minshawy_Murattal_128kbps", "محمد صديق المنشاوي")
 }
 
+# ----------------- عقل الذكاء الاصطناعي (Gemini AI Parser) -----------------
+def analyze_with_ai(user_prompt):
+    """تحليل أي كلام يرسله المستخدم لتحديد نية الطلب والسورة والآيات المناسبة"""
+    if not GEMINI_KEY:
+        # نظام احتياطي في حال عدم إدخال المفتاح
+        return {"action": "generate", "surah": 94, "start": 1, "end": 8, "reciter": "dossari", "reply": "أرح صدرك بآيات سورة الشرح 🤍"}
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    system_instruction = (
+        "أنت العقل المدبر لقناة قرآن كريم احترافية. المستخدم يرسل لك كلاماً حراً (فضفضة، مشاعر، رغبة في سورة معينة، أو استفسار). "
+        "مهمتك: "
+        "1. الرد عليه بلطف وأسلوب إيماني راقٍ ومختصر (سطر واحد فقط) يحتوي على دعاء أو طمأنينة. "
+        "2. تحديد السورة ورقمها، ورقم آية البداية والنهاية (بما يناسب مقطع ريلز قصير من 3 إلى 8 آيات)، والقارئ المناسب (dossari, qatami, abbad, muaiqly, alafasy, minshawi). "
+        "أرجع النتيجة بصيغة JSON فقط بهذا الشكل الصارم دون أي نصوص إضافية:\n"
+        "{\"action\": \"generate\", \"surah\": 94, \"start\": 1, \"end\": 8, \"reciter\": \"dossari\", \"surah_name\": \"الشرح\", \"reply\": \"كلامك الجميل هنا 🤍\"}"
+    )
+
+    payload = {
+        "contents": [{"parts": [{"text": f"{system_instruction}\n\nرسالة المستخدم: {user_prompt}"}]}],
+        "generationConfig": {"temperature": 0.3}
+    }
+
+    try:
+        res = requests.post(url, json=payload, timeout=15).json()
+        raw_text = res["candidates"][0]["content"]["parts"][0]["text"].strip()
+        # تنظيف علامات كود الماركداون
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        return json.loads(raw_text)
+    except Exception as e:
+        print(f"AI Parse Error: {e}", flush=True)
+        return {"action": "generate", "surah": 94, "start": 1, "end": 8, "reciter": "dossari", "surah_name": "الشرح", "reply": "أرح سمعك وفؤادك بآيات الله 🤍"}
+
+# ----------------- محرك المونتاج والغلاف التلقائي -----------------
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
     if not os.path.exists(font_path) or os.path.getsize(font_path) < 40000:
@@ -67,10 +82,27 @@ def clean_arabic(text):
         text = text.replace(s, '')
     return text.strip()
 
-def get_chrome():
-    return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
+def download_audio_safe(surah_num, ayah_num, rec_id, out_file):
+    surah_str = f"{surah_num:03d}"
+    ayah_str = f"{ayah_num:03d}"
+    urls = [
+        f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3",
+        f"https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/{surah_str}{ayah_str}.mp3",
+        f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3"
+    ]
+    for u in urls:
+        try:
+            r = requests.get(u, timeout=20)
+            if r.status_code == 200 and len(r.content) > 4000:
+                with open(out_file, "wb") as f:
+                    f.write(r.content)
+                return True
+        except Exception:
+            continue
+    return False
 
 def render_quran_frame(words, active_idx, font_b64):
+    chrome_bin = shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
     words_html = []
     for i, w in enumerate(words):
         if i == active_idx:
@@ -99,19 +131,19 @@ def render_quran_frame(words, active_idx, font_b64):
     h_path, p_path = f"tmp_{active_idx}.html", f"frame_{active_idx}.png"
     with open(h_path, "w", encoding="utf-8") as f:
         f.write(html)
-    cmd = [get_chrome(), "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", "--default-background-color=00000000", f"--screenshot={os.path.abspath(p_path)}", f"file://{os.path.abspath(h_path)}"]
+    cmd = [chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", "--default-background-color=00000000", f"--screenshot={os.path.abspath(p_path)}", f"file://{os.path.abspath(h_path)}"]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists(h_path):
         os.remove(h_path)
     return p_path
 
 def generate_cover_image(surah_name, reciter_name, font_b64, output_path="auto_cover.jpg"):
-    """توليد الغلاف المربع الاحترافي"""
+    chrome_bin = shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
   @font-face {{ font-family: 'AmiriQuran'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ width: 1080px; height: 1920px; background: radial-gradient(circle at center, #151d28 0%, #0a0d13 100%); display: flex; justify-content: center; align-items: center; position: relative; overflow: hidden; }}
+  body {{ width: 1080px; height: 1920px; background: radial-gradient(circle at center, #151d28 0%, #0a0d13 100%); display: flex; justify-content: center; align-items: center; position: relative; }}
   .grid-box {{ width: 1080px; height: 1080px; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; text-align: center; }}
   .outer-circle {{ position: absolute; width: 780px; height: 780px; border-radius: 50%; border: 2px solid rgba(212, 175, 55, 0.45); box-shadow: 0 0 35px rgba(212, 175, 55, 0.15); }}
   .badge {{ font-family: 'AmiriQuran', sans-serif; font-size: 26px; color: #e6edf3; background: rgba(0, 0, 0, 0.4); padding: 8px 24px; border-radius: 20px; border: 1px solid rgba(212, 175, 55, 0.3); margin-bottom: 25px; z-index: 2; }}
@@ -134,13 +166,13 @@ def generate_cover_image(surah_name, reciter_name, font_b64, output_path="auto_c
     h_path = "tmp_cov.html"
     with open(h_path, "w", encoding="utf-8") as f:
         f.write(html)
-    cmd = [get_chrome(), "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", "--default-background-color=00000000", f"--screenshot={os.path.abspath(output_path)}", f"file://{os.path.abspath(h_path)}"]
+    cmd = [chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", "--default-background-color=00000000", f"--screenshot={os.path.abspath(output_path)}", f"file://{os.path.abspath(h_path)}"]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists(h_path):
         os.remove(h_path)
     return output_path
 
-def produce_video_by_surah(surah_num, start_a, end_a, reciter_key="dossari", tag="user"):
+def produce_video_pipeline(surah_num, start_a, end_a, reciter_key="dossari", tag="ai"):
     rec_id, rec_name = RECITERS.get(reciter_key, RECITERS["dossari"])
     meta = requests.get(f"https://api.alquran.cloud/v1/surah/{surah_num}", timeout=15).json()
     surah_name = meta.get("data", {}).get("name", f"سورة {surah_num}").replace("سورة ", "")
@@ -152,25 +184,14 @@ def produce_video_by_surah(surah_num, start_a, end_a, reciter_key="dossari", tag
         if a == 1 and surah_num != 1:
             txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
-        surah_str, ayah_str = f"{surah_num:03d}", f"{a:03d}"
-        aud_url = f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3"
         aud_file = f"aud_{tag}_{a}.mp3"
-        try:
-            r = requests.get(aud_url, timeout=25)
-            with open(aud_file, "wb") as f:
-                f.write(r.content)
-        except Exception:
-            fb = requests.get(f"https://everyayah.com/data/Alafasy_128kbps/{surah_str}{ayah_str}.mp3", timeout=25)
-            with open(aud_file, "wb") as f:
-                f.write(fb.content)
+        download_audio_safe(surah_num, a, rec_id, aud_file)
         ayahs.append({"text": txt, "audio": aud_file})
 
-    # جلب فيديو Pexels طبيعي
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
     res = requests.get("https://api.pexels.com/videos/search?query=switzerland+mountains+drone+vertical&orientation=portrait&per_page=6", headers=headers, timeout=15).json()
-    chosen_video = random.choice(res.get("videos", []))
-    v_files = sorted(chosen_video["video_files"], key=lambda x: x.get("width", 0))
+    v_files = sorted(random.choice(res.get("videos", []))["video_files"], key=lambda x: x.get("width", 0))
     bg_file = f"bg_{tag}.mp4"
     with open(bg_file, "wb") as f:
         f.write(requests.get(v_files[-1]["link"], timeout=35).content)
@@ -201,93 +222,76 @@ def produce_video_by_surah(surah_num, start_a, end_a, reciter_key="dossari", tag
 
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
 
-    # 🌟 دمج الغلاف أوتوماتيكياً كأول إطار في الفيديو ليظهر تلقائياً على كل المنصات
     cover_file = f"cover_{tag}.jpg"
     generate_cover_image(surah_name, rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.12).resize((1080, 1920))
 
-    final_video = concatenate_videoclips([cover_clip, main_video])
+    temp_joined = f"temp_{tag}.mp4"
+    joined_video = concatenate_videoclips([cover_clip, main_video])
+    joined_video.write_videofile(temp_joined, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
+
     out_video = f"final_{tag}.mp4"
-    final_video.write_videofile(out_video, fps=24, codec="libx264", audio_codec="aac", bitrate="2800k", threads=4, preset="ultrafast")
+    embed_cmd = ["ffmpeg", "-y", "-i", temp_joined, "-i", cover_file, "-map", "0", "-map", "1", "-c", "copy", "-disposition:v:1", "attached_pic", out_video]
+    try:
+        subprocess.run(embed_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        out_video = temp_joined
 
     return out_video, cover_file, surah_name, rec_name
 
-# ----------------- معالجات البوت التفاعلية -----------------
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        f"مرحباً بك يا {update.effective_user.first_name} في <b>بوت القرآن الكريم الذكي</b> 🌿\n\n"
-        "✨ <b>يمكنك الآن طلب أي سورة بمجرد كتابة اسمها في الشات!</b>\n"
-        "أمثلة: <code>نزل سورة الليل</code> أو <code>سورة الشرح</code> أو <code>الضحى</code>.\n\n"
-        "وسيقوم البوت بمونتاج المقطع فوراً مع تظليل الذهب والصوت السينمائي والغلاف التلقائي!"
-    )
-    btns = [
-        [InlineKeyboardButton("📖 نزل سورة الليل الآن", callback_data="req_surah_الليل")],
-        [InlineKeyboardButton("🤍 نزل سورة الشرح", callback_data="req_surah_الشرح")],
-        [InlineKeyboardButton("🌙 نزل سورة الملك", callback_data="req_surah_الملك")]
-    ]
-    await update.message.reply_text(msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(btns))
+# ----------------- معالجة أي رسالة نصية بالذكاء الاصطناعي -----------------
+async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_prompt = update.message.text.strip()
+    status_msg = await update.message.reply_text("🤖 <i>جاري تحليل رسالتك وفهم نيتك بالذكاء الاصطناعي...</i>", parse_mode="HTML")
 
-async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text.strip()
-    # تنظيف الكلمات الشائعة ("صوره", "سوره", "نزل", "هات")
-    clean_query = user_text.replace("صوره", "").replace("صورة", "").replace("سورة", "").replace("سوره", "").replace("نزل", "").replace("اريد", "").strip()
+    # تحليل الرسالة عبر الذكاء الاصطناعي
+    ai_result = await asyncio.to_thread(analyze_with_ai, user_prompt)
+    ai_reply = ai_result.get("reply", "أبشر بكل خير 🤍")
+    surah_num = ai_result.get("surah", 94)
+    start_a = ai_result.get("start", 1)
+    end_a = ai_result.get("end", 5)
+    reciter_key = ai_result.get("reciter", "dossari")
 
-    matched_surah = None
-    for s_name in SURAHS_MAP:
-        if s_name in clean_query or clean_query in s_name:
-            matched_surah = s_name
-            break
-
-    if not matched_surah:
-        await update.message.reply_text(
-            "لم أتعرف على اسم السورة بدقة 🌿\n"
-            "يرجى كتابة اسم السورة مباشرة، مثل: <b>سورة الليل</b> أو <b>سورة الضحى</b> أو <b>سورة الملك</b>.",
-            parse_mode="HTML"
-        )
-        return
-
-    s_info = SURAHS_MAP[matched_surah]
-    status_msg = await update.message.reply_text(
-        f"⏳ <b>جاري الآن إنتاج سورة {matched_surah}...</b>\n"
-        f"• إضافة تظليل الكلمات بالذهب\n"
-        f"• ضبط الصوت السينمائي 8D\n"
-        f"• دمج الغلاف تلقائياً في الفيديو 📸\n\n"
-        f"انتظر حوالي 45 ثانية وسيكون المقطع جاهزاً!",
+    await status_msg.edit_text(
+        f"🤍 <b>{ai_reply}</b>\n\n"
+        f"🎬 <b>جاري بدء الإنتاج الآلي لمقطعك:</b>\n"
+        f"• السورة: رقم {surah_num} (الآيات {start_a} إلى {end_a})\n"
+        f"• القارئ: {RECITERS.get(reciter_key, RECITERS['dossari'])[1]}\n"
+        f"• المؤثرات: تظليل الكلمات بالذهب + الغلاف التلقائي المدمج 📸\n\n"
+        f"⏳ انتظر حوالي 40 ثانية...",
         parse_mode="HTML"
     )
 
     try:
-        tag = f"u_{update.effective_user.id}_{int(time.time())}"
+        tag = f"ai_{update.effective_user.id}_{int(time.time())}"
         vid_path, cov_path, s_name, r_name = await asyncio.to_thread(
-            produce_video_by_surah, s_info[0], s_info[1], s_info[2], "dossari", tag
+            produce_video_pipeline, surah_num, start_a, end_a, reciter_key, tag
         )
 
-        with open(vid_path, "rb") as vf:
+        with open(vid_path, "rb") as vf, open(cov_path, "rb") as cf:
             caption = (
-                f"🤍 <b>سورة {s_name} كاملة</b>\n"
+                f"🕊️ <b>سورة {s_name} ({start_a}-{end_a})</b>\n"
                 f"🎙️ بصوت القارئ: {r_name}\n\n"
-                f"✨ الغلاف مدمج تلقائياً في أول الفيديو • ضع السماعات وعش السكينة 🎧"
+                f"✨ تم إنتاج المقطع ودمج الغلاف وتظليل الذهب بالكامل لك عبر الذكاء الاصطناعي 🤍"
             )
-            await update.message.reply_video(video=vf, caption=caption, parse_mode="HTML")
+            await update.message.reply_video(video=vf, thumbnail=cf, caption=caption, parse_mode="HTML")
 
         await status_msg.delete()
     except Exception as e:
         await status_msg.edit_text(f"❌ حدث خطأ أثناء المونتاج: {e}")
 
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data.startswith("req_surah_"):
-        surah_name = query.data.replace("req_surah_", "")
-        s_info = SURAHS_MAP[surah_name]
-        status_msg = await query.message.reply_text(f"⏳ جاري إنتاج سورة {surah_name} مع الغلاف التلقائي...")
-        tag = f"btn_{int(time.time())}"
-        vid_path, _, s_name, r_name = await asyncio.to_thread(
-            produce_video_by_surah, s_info[0], s_info[1], s_info[2], "dossari", tag
-        )
-        with open(vid_path, "rb") as vf:
-            await query.message.reply_video(video=vf, caption=f"سورة {s_name} - {r_name} 🌿")
-        await status_msg.delete()
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = (
+        f"أهلاً بك يا {update.effective_user.first_name} في <b>بوت القرآن الكريم فائق الذكاء (AI Engine)</b> 🌿\n\n"
+        "💡 <b>اكتب لي أي شيء تريده بالعامية أو الفصحى وسأفهمك فوراً!</b>\n"
+        "أمثلة:\n"
+        "• <i>«حاسس بضيق ومحتاج آية تريح قلبي»</i>\n"
+        "• <i>«اعملي فيديو بصوت مشاري العفاسي عن الرزق»</i>\n"
+        "• <i>«نزل سورة الملك قبل ما أنام»</i>\n"
+        "• <i>«عايز تلاوة مؤثرة للمنشاوي»</i>\n\n"
+        "وسأقوم باختيار الآيات وتوليد الفيديو بغلافه الرسمي لك فوراً 🤍"
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 def main():
     if not BOT_TOKEN:
@@ -295,12 +299,11 @@ def main():
         sys.exit(1)
 
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-    # مستمع الرسائل النصية المباشرة
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    app.add_handler(CommandHandler("start", start_cmd))
+    # استقبال أي كلام عشوائي وتمريره للذكاء الاصطناعي
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_message))
 
-    print("🚀 تم تشغيل البوت الذكي بنظام الاستماع للرسائل النصية والغلاف التلقائي 24/7...", flush=True)
+    print("🚀 تم تشغيل البوت المربوط بالذكاء الاصطناعي 24/7...", flush=True)
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
