@@ -21,29 +21,95 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip, concatenate_audioclips, concatenate_videoclips
 )
 
-# ----------------- 1. محتوى الجمعة والأيام العادية (مدة أقل من 60 ثانية حصراً) -----------------
-FRIDAY_SPECIAL = {
-    "surah": 18, "name": "الكهف", "start": 1, "end": 5,
-    "badge": "سورة الكهف • نور ما بين الجمعتين 🌿",
-    "title": "أول 5 آيات من سورة الكهف | جمعة مباركة 🤍 #shorts",
-    "caption": "🕌 سورة الكهف • نور ما بين الجمعتين 🌿\n\nصلوا على النبي ﷺ واكتب شيئاً تؤجر عليه 🤍\n\n#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #shorts #reels"
-}
-
-REGULAR_PLAYLIST = [
-    {"surah": 94, "start": 1, "end": 8, "name": "الشرح", "badge": "رسالة لقلبك إذا كنت حزيناً 🌿", "hook": "إذا ضاقت بك الدنيا.. استمع لرسالة الله 🤍"},
-    {"surah": 93, "start": 1, "end": 5, "name": "الضحى", "badge": "أمل يتجدد ومغفرة من الله 🤍", "hook": "ما ودعك ربك وما قلى.. سكينة لقلبك 🌿"},
-    {"surah": 67, "start": 1, "end": 4, "name": "الملك", "badge": "أمان لقلبك وحصن من العذاب 🌙", "hook": "تلاوة هادئة لراحة البال والسكينة 🕊️"},
-    {"surah": 92, "start": 1, "end": 7, "name": "الليل", "badge": "والليل إذا يغشى والنهار إذا تجلى 🌿", "hook": "فسنيسره لليسرى.. تلاوة خاشعة 🤍"},
-    {"surah": 1,  "start": 1, "end": 7, "name": "الفاتحة", "badge": "أم الكتاب والشفاء التام 🤍", "hook": "الفاتحة تريح قلبك وتفتح لك أبواب الخير 🕊️"}
-]
+HISTORY_FILE = "history.json"
+FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
 RECITERS_POOL = [
     {"id": "Minshawy_Murattal_128kbps", "name": "محمد صديق المنشاوي"},
     {"id": "Husary_128kbps", "name": "محمود خليل الحصري"}
 ]
 
-FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
+# ----------------- 1. نظام منع التكرار الدائم (History Tracker) -----------------
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"posted_keys": []}
+    return {"posted_keys": []}
 
+def save_history(clip_key):
+    history = load_history()
+    if clip_key not in history["posted_keys"]:
+        history["posted_keys"].append(clip_key)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+# ----------------- 2. جلب وتوليد مقطع عشوائي جديد من الـ 114 سورة -----------------
+def get_all_surahs_meta():
+    """جلب بيانات كل سور القرآن الـ 114 (الاسم وعدد الآيات)"""
+    cache_path = "surahs_meta.json"
+    if os.path.exists(cache_path):
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    try:
+        r = requests.get("https://api.alquran.cloud/v1/meta", timeout=15).json()
+        surahs = r.get("data", {}).get("surahs", {}).get("references", [])
+        meta = [{"number": s["number"], "name": s["name"].replace("سُورَةُ ", "").strip(), "ayahs": s["numberOfAyahs"]} for s in surahs]
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+        return meta
+    except Exception:
+        # احتياطي لأشهر السور في حال انقطاع واجهة meta
+        return [{"number": 1, "name": "الفاتحة", "ayahs": 7}, {"number": 18, "name": "الكهف", "ayahs": 110}, {"number": 67, "name": "الملك", "ayahs": 30}]
+
+def pick_unposted_random_clip():
+    """اختيار مقطع عشوائي لم يسبق نشره نهائياً"""
+    surahs = get_all_surahs_meta()
+    history = load_history()
+    posted_keys = set(history.get("posted_keys", []))
+
+    # تجربة اختيار عشوائي بحد أقصى 150 محاولة لمنع أي تكرار
+    for _ in range(150):
+        surah = random.choice(surahs)
+        s_num = surah["number"]
+        s_name = surah["name"]
+        total_ayahs = surah["ayahs"]
+
+        # تحديد عدد الآيات المناسب ليكون الفيديو أقل من دقيقة
+        # السور الطويلة آياتها طويلة (نختار من 2 إلى 4 آيات)، والقصيرة (نختار من 4 إلى 7)
+        chunk_size = random.randint(2, 4) if total_ayahs > 40 else random.randint(3, min(6, total_ayahs))
+        if total_ayahs <= 5:
+            start_a = 1
+            end_a = total_ayahs
+        else:
+            start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
+            end_a = min(total_ayahs, start_a + chunk_size - 1)
+
+        clip_key = f"{s_num}_{start_a}_{end_a}"
+        if clip_key not in posted_keys:
+            return {
+                "surah": s_num,
+                "name": s_name,
+                "start": start_a,
+                "end": end_a,
+                "key": clip_key,
+                "badge": f"سورة {s_name} 🌿"
+            }
+
+    # إذا استنفذت المحاولات العشوائية، يختار أول نطاق غير مسجل في التاريخ بالتسلسل
+    for surah in surahs:
+        s_num = surah["number"]
+        for st in range(1, surah["ayahs"], 3):
+            en = min(surah["ayahs"], st + 2)
+            k = f"{s_num}_{st}_{en}"
+            if k not in posted_keys:
+                return {"surah": s_num, "name": surah["name"], "start": st, "end": en, "key": k, "badge": f"سورة {surah['name']} 🌿"}
+
+    return {"surah": 1, "name": "الفاتحة", "start": 1, "end": 7, "key": f"1_1_7_{int(time.time())}", "badge": "الفاتحة 🤍"}
+
+# ----------------- 3. المعالجة البصرية وهندسة الصوت المضادة للحقوق -----------------
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
     if not os.path.exists(font_path) or os.path.getsize(font_path) < 40000:
@@ -66,38 +132,19 @@ def clean_arabic(text):
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
-# ----------------- 2. درع كسر البصمة الصوتية التام (دمج تردد طبيعي + صدى) -----------------
-def generate_safe_audio_track(raw_audio, output_audio):
-    """
-    دمج صدى الحرم + ضوضاء مطر طبيعية خافتة جداً لتعطيل خوارزمية Content ID نهائياً
-    """
-    # فلتر صدى خاشع وتغيير طفيف للتردد
-    audio_filter = (
-        "aresample=44100,"
-        "asetrate=44100*1.015,"
-        "atempo=0.985,"
-        "aecho=0.8:0.7:28:0.2,"
-        "volume=1.05"
-    )
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", raw_audio,
-        "-af", audio_filter,
-        "-b:a", "192k",
-        output_audio
-    ]
+def apply_anti_copyright(raw_audio, out_audio):
+    audio_filter = "aresample=44100,asetrate=44100*1.015,atempo=0.985,aecho=0.8:0.7:28:0.2,volume=1.05"
+    cmd = ["ffmpeg", "-y", "-i", raw_audio, "-af", audio_filter, "-b:a", "192k", out_audio]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return output_audio
+    return out_audio
 
 def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
-    surah_str = f"{surah_num:03d}"
-    ayah_str = f"{ayah_num:03d}"
-    raw_tmp = f"raw_{surah_str}_{ayah_str}.mp3"
-
+    s_str, a_str = f"{surah_num:03d}", f"{ayah_num:03d}"
+    raw_tmp = f"raw_{s_str}_{a_str}.mp3"
     urls = [
-        f"https://everyayah.com/data/{rec_id}/{surah_str}{ayah_str}.mp3",
-        f"https://everyayah.com/data/Minshawy_Murattal_128kbps/{surah_str}{ayah_str}.mp3",
-        f"https://everyayah.com/data/Husary_128kbps/{surah_str}{ayah_str}.mp3"
+        f"https://everyayah.com/data/{rec_id}/{s_str}{a_str}.mp3",
+        f"https://everyayah.com/data/Minshawy_Murattal_128kbps/{s_str}{a_str}.mp3",
+        f"https://everyayah.com/data/Husary_128kbps/{s_str}{a_str}.mp3"
     ]
     for u in urls:
         try:
@@ -105,7 +152,7 @@ def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
             if r.status_code == 200 and len(r.content) > 4000 and not r.content.startswith(b"<!DOCTYPE"):
                 with open(raw_tmp, "wb") as f:
                     f.write(r.content)
-                generate_safe_audio_track(raw_tmp, out_file)
+                apply_anti_copyright(raw_tmp, out_file)
                 if os.path.exists(raw_tmp): os.remove(raw_tmp)
                 return True
         except Exception:
@@ -171,11 +218,11 @@ def generate_cover_file(surah_name, sub_title, reciter_name, font_b64, out_cover
     h_path = "tmp_cov.html"
     with open(h_path, "w", encoding="utf-8") as f:
         f.write(html)
-    subprocess.run([chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", f"--screenshot={os.path.abspath(out_cover)}", f"file://{os.path.abspath('tmp_cov.html')}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run([chrome_bin, "--headless", "--no-sandbox", "--disable-gpu", "--window-size=1080,1920", f"--screenshot={os.path.abspath(out_cover)}", f"file://{os.path.abspath(h_path)}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists(h_path): os.remove(h_path)
     return out_cover
 
-def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, sub_title, reciter_info, tag):
+def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, reciter_info, tag):
     rec_id = reciter_info["id"]
     rec_name = reciter_info["name"]
     font_b64 = get_font_base64()
@@ -210,18 +257,17 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, s
     final_audio = concatenate_audioclips(audio_clips)
     tot_dur = curr_t + 0.8
 
-    # 1. جلب وتحجيم فيديو Pexels مسبقاً عبر ffmpeg لتسريع الرندر 100 ضعف!
+    # جلب وتحجيم الفيديو بسرعة عبر ffmpeg في ثانيتين
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"fast_bg_{tag}.mp4"
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     headers = {"Authorization": pexels_key} if pexels_key else {}
-    res = requests.get("https://api.pexels.com/videos/search?query=scenic+mountains+drone+vertical&orientation=portrait&per_page=6", headers=headers, timeout=15).json()
+    res = requests.get("https://api.pexels.com/videos/search?query=scenic+nature+drone+vertical&orientation=portrait&per_page=12", headers=headers, timeout=15).json()
     v_link = sorted(random.choice(res.get("videos", []))["video_files"], key=lambda x: x.get("width", 0))[-1]["link"]
     
     with open(raw_bg, "wb") as f:
         f.write(requests.get(v_link, timeout=35).content)
 
-    # تحجيم بـ ffmpeg في ثانيتين فقط
     scale_cmd = [
         "ffmpeg", "-y", "-i", raw_bg,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
@@ -237,7 +283,7 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, s
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
 
     cover_file = f"cover_{tag}.jpg"
-    generate_cover_file(surah_name, sub_title, rec_name, font_b64, cover_file)
+    generate_cover_file(surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.12)
 
     temp_joined = f"temp_{tag}.mp4"
@@ -328,43 +374,46 @@ def notify_telegram(message, cover_file=None):
 # ----------------- الدالة الرئيسية -----------------
 if __name__ == "__main__":
     now_utc = datetime.datetime.utcnow()
-    is_friday = (now_utc.weekday() == 4)
+    is_friday = (now_utc.weekday() == 4 and 9 <= now_utc.hour <= 14)
     reciter = random.choice(RECITERS_POOL)
 
     if is_friday:
-        print("🕌 موعد الجمعة: إنتاج مقطع شورتس سريع (أقل من دقيقة) لسورة الكهف بدون حقوق...", flush=True)
-        item = FRIDAY_SPECIAL
-        tag = f"fri_{int(time.time())}"
-        vid_file, cov_file, r_name = build_fast_short_video(
-            item["surah"], item["name"], item["start"], item["end"],
-            item["badge"], "نور ما بين الجمعتين", reciter, tag
-        )
-        yt_title = item["title"]
-        caption = item["caption"]
+        item = {"surah": 18, "name": "الكهف", "start": 1, "end": 6, "badge": "نور ما بين الجمعتين 🌿", "key": f"friday_kahf_{now_utc.strftime('%Y%U')}"}
     else:
-        print("📅 يوم عادي: إنتاج فيديو شورتس سريع (أقل من دقيقة)...", flush=True)
-        item = random.choice(REGULAR_PLAYLIST)
-        tag = f"reg_{int(time.time())}"
-        vid_file, cov_file, r_name = build_fast_short_video(
-            item["surah"], item["name"], item["start"], item["end"],
-            item["badge"], f"سورة {item['name']}", reciter, tag
-        )
-        yt_title = f"{item['badge'][:28]} | سورة {item['name']} 🤍 #shorts"
-        caption = f"{item['hook']}\n\n📖 سورة {item['name']}\n🎙️ القارئ: {r_name}\n\n#قرآن #راحة_نفسية #shorts"
+        item = pick_unposted_random_clip()
+
+    tag = f"q_{item['key']}_{int(time.time())}"
+    print(f"🎬 اختيار مقطع جديد كلياً: سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
+
+    vid_file, cov_file, r_name = build_fast_short_video(
+        item["surah"], item["name"], item["start"], item["end"],
+        f"سورة {item['name']} • تلاوة خاشعة", reciter, tag
+    )
+
+    yt_title = f"تلاوة خاشعة | سورة {item['name']} ({item['start']}-{item['end']}) 🤍 #shorts"
+    caption = (
+        f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
+        f"🎙️ بصوت القارئ: {r_name}\n\n"
+        f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا 🤍\n\n"
+        f"#سورة_{item['name']} #قرآن #راحة_نفسية #shorts #reels"
+    )
 
     pub_url = upload_files(vid_file, cov_file)
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
 
+    # حفظ المقطع فوراً في السجل الدائم لمنع تكراره مستقبلاً
+    save_history(item["key"])
+
     report = (
-        f"✨ <b>تم نشر فيديو اليوم بنجاح وأمان تام!</b>\n\n"
-        f"🏷️ <b>العنوان:</b> {yt_title}\n"
+        f"✨ <b>تم إنتاج ونشر مقطع جديد وحصري!</b>\n\n"
+        f"📖 <b>السورة:</b> {item['name']} ({item['start']}-{item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
-        f"⏱️ <b>المدة:</b> أقل من 60 ثانية (شورتس حقيقي)\n"
+        f"🔒 <b>كود السجل:</b> <code>{item['key']}</code> (ممنوع تكراره)\n"
         f"🔗 <b>الرابط:</b> <a href='{pub_url}'>مشاهدة المقطع</a>"
     )
     notify_telegram(report, cov_file)
 
     if os.path.exists(vid_file): os.remove(vid_file)
     if os.path.exists(cov_file): os.remove(cov_file)
-    print("=== اكتمل الرندر والنشر في ثوانٍ معدودة وبدون أي حظر ===", flush=True)
+    print("=== اكتمل الرندر وحفظ السجل بنجاح ===", flush=True)
