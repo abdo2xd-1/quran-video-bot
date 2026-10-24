@@ -1,38 +1,34 @@
 name: Render Quran Videos
 
 on:
-  workflow_dispatch: # لتشغيل الأردن يدوياً متى شئت
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-  
-  steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg fonts-hosny-amiri
-        pip install mutagen yt-dlp
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-hosny-amiri
+          pip install mutagen yt-dlp
 
-    - name: Generate Quran Video (Surah Al-Fatihah / البداية)
-      run: |
-        # إنشاء الخلفية الليلية بدقة 720x1280
-        ffmpeg -y -f lavfi -i "color=c=#090d16:s=720x1280:r=30" -t 15 -c:v libx264 -pix_fmt yuv420p bg.mp4
-        
-        # يمكنك إضافة سكربت بايثون هنا لتوليد السور ودمجها وحفظها في مجلد outputs
-        mkdir -p output
-        echo "تم إنشاء الخلفية بنجاح وجاهزة للرندر"
+      - name: Generate Quran Video
+        run: |
+          ffmpeg -y -f lavfi -i "color=c=#090d16:s=720x1280:r=30" -t 15 -c:v libx264 -pix_fmt yuv420p bg.mp4
+          mkdir -p output
+          echo "تم إنشاء الخلفية بنجاح"
 
-    - name: Upload Output Video
-      uses: actions/upload-artifact@v4
-      with:
-        name: quran-video-output
-        path: bg.mp4
+      - name: Upload Output Video
+        uses: actions/upload-artifact@v4
+        with:
+          name: quran-video-output
+          path: bg.mp4
