@@ -1,21 +1,16 @@
-name: Quran Publisher (Friday 1PM & Daily 6PM)
+name: 4x Daily Quran Shorts Engine
 
 on:
   schedule:
-    # يوم الجمعة الساعة 1:10 ظهراً بتوقيت مصر (10:10 UTC)
-    - cron: '10 10 * * 5'
-    
-    # باقي الأيام الساعة 6:10 مساءً بتوقيت مصر (15:10 UTC)
-    - cron: '10 15 * * 0,1,2,3,4,6'
-
+    # 4 مواعيد يومية (توقيت مصر/السعودية: 6:30 ص، 1:30 ظ، 6:30 م، 10:30 م)
+    - cron: '30 4,11,16,20 * * *'
   workflow_dispatch:
 
 jobs:
-  publish-scheduled-video:
+  produce-and-save:
     runs-on: ubuntu-latest
-    timeout-minutes: 300   # 👈 5 ساعات كاملة (300 دقيقة)
     permissions:
-      contents: write
+      contents: write # صلاحية حفظ ملف history.json في المستودع
 
     steps:
       - name: Checkout Repository
@@ -34,17 +29,25 @@ jobs:
       - name: Install Python Requirements
         run: |
           pip install --upgrade pip
-          pip install requests "moviepy==1.0.3" "Pillow<10" imageio-ffmpeg
+          pip install requests "moviepy==1.0.3" "Pillow<10"
 
-      - name: Run Auto Publisher
+      - name: Run Quran Engine
         env:
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
-          WATERMARK_HANDLE: ${{ secrets.WATERMARK_HANDLE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python main.py
+          python -u main.py
+
+      # حفظ وتحديث سجل الفيديوهات المنشورة في المستودع لمنع التكرار نهائياً
+      - name: Commit & Push History Registry
+        run: |
+          git config --global user.name "quran-bot-automation"
+          git config --global user.email "bot@github-actions.local"
+          git pull --rebase origin main || true
+          git add history.json surahs_meta.json || true
+          git commit -m "Auto-update: Register published Quran clip [skip ci]" || echo "No changes to commit"
+          git push origin main || true
