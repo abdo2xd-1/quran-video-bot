@@ -1,6 +1,6 @@
-moviepy==1.0.3
-Pillow==9.5.0
 requests
-groq
-python-telegram-bot==20.7
 tweepy
+selenium
+webdriver-manager
+google-api-python-client
+google-auth-oauthlib
