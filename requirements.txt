@@ -1,3 +1,9 @@
+moviepy
+Pillow
+numpy
+imageio
+imageio_ffmpeg
+tqdm
 requests
 tweepy
 selenium
