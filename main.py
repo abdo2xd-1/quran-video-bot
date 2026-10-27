@@ -59,7 +59,6 @@ def get_all_114_surahs():
             json.dump(meta, f, ensure_ascii=False)
         return meta
     except Exception:
-        # احتياطي في حال بطء السيرفر الخارجي
         return [{"number": i, "name": f"سورة رقم {i}", "ayahs": 10} for i in range(1, 115)]
 
 def pick_next_surah():
@@ -67,10 +66,8 @@ def pick_next_surah():
     history = load_history()
     posted = set(history.get("posted_surahs", []))
     
-    # اختيار من القرآن كاملاً ما عدا الكهف لبقية أيام الأسبوع
     available = [s for s in surahs if s["number"] not in posted and s["number"] != 18]
     if not available:
-        # إذا تم ختم القرآن كاملاً يبدأ دورة جديدة
         available = [s for s in surahs if s["number"] != 18]
         history["posted_surahs"] = []
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
@@ -250,16 +247,13 @@ def render_quran_frame_landscape(words, active_idx, badge_text, font_b64):
     return p_path
 
 def build_long_surah_fast(surah_num, surah_name, total_ayahs, reciter_info, tag):
-    """محرك فائق السرعة للسور الكبيرة بدون كراش الرام"""
     rec_id = reciter_info["id"]
     rec_name = reciter_info["name"]
     font_b64 = get_font_base64()
 
-    # 1. تصميم الغلاف
     cover_file = f"cover_{tag}.jpg"
     generate_landscape_cover(surah_name, f"سورة {surah_name} كاملة ({total_ayahs} آية)", rec_name, font_b64, cover_file)
 
-    # 2. تحميل جميع الآيات وتجميعها صوتياً
     s_str = f"{surah_num:03d}"
     tmp_list = f"list_{tag}.txt"
     downloaded = []
@@ -284,16 +278,13 @@ def build_long_surah_fast(surah_num, surah_name, total_ayahs, reciter_info, tag)
 
     raw_audio = f"raw_{tag}.mp3"
     final_audio = f"aud_final_{tag}.mp3"
-    # دمج الآيات
     subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", tmp_list, "-c", "copy", raw_audio], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # معالجة البصمة الصوتية
     subprocess.run([
         "ffmpeg", "-y", "-i", raw_audio,
         "-filter_complex", "[0:a]asetrate=44100*1.040,atempo=0.961,volume=1.12[aout]",
         "-map", "[aout]", "-b:a", "192k", "-ar", "44100", final_audio
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # 3. إنتاج الفيديو الكامل عبر FFmpeg المباشر في أقل من دقيقة
     out_video = f"final_{tag}.mp4"
     print("🎬 جاري إنشاء الفيديو الكامل عبر المحرك المباشر...", flush=True)
     subprocess.run([
@@ -302,7 +293,6 @@ def build_long_surah_fast(surah_num, surah_name, total_ayahs, reciter_info, tag)
         "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p", "-shortest", out_video
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # تنظيف الملفات المؤقتة
     if os.path.exists(tmp_list): os.remove(tmp_list)
     if os.path.exists(raw_audio): os.remove(raw_audio)
     if os.path.exists(final_audio): os.remove(final_audio)
@@ -312,7 +302,6 @@ def build_long_surah_fast(surah_num, surah_name, total_ayahs, reciter_info, tag)
     return out_video, cover_file, rec_name
 
 def build_short_surah_words(surah_num, surah_name, total_ayahs, reciter_info, tag):
-    """محرك السور القصيرة والمتوسطة بالكلمات الذهبية المتحركة"""
     rec_id = reciter_info["id"]
     rec_name = reciter_info["name"]
     font_b64 = get_font_base64()
@@ -333,7 +322,6 @@ def build_short_surah_words(surah_num, surah_name, total_ayahs, reciter_info, ta
             with open(raw_tmp, "wb") as f:
                 f.write(r.content)
             
-            # تعديل التردد
             subprocess.run([
                 "ffmpeg", "-y", "-i", raw_tmp,
                 "-filter_complex", "[0:a]asetrate=44100*1.040,atempo=0.961,volume=1.12[aout]",
@@ -364,7 +352,6 @@ def build_short_surah_words(surah_num, surah_name, total_ayahs, reciter_info, ta
     final_audio = concatenate_audioclips(audio_clips)
     tot_dur = curr_t + 1.0
 
-    # تحميل خلفية طبيعية بالعرض
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"fast_bg_{tag}.mp4"
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
@@ -411,32 +398,49 @@ def build_short_surah_words(surah_num, surah_name, total_ayahs, reciter_info, ta
     return out_file, cover_file, rec_name
 
 def upload_files(video_file):
+    print("📤 جاري رفع ملف الفيديو للحصول على رابط مباشر لـ Buffer...", flush=True)
+    # المحاولة 1: رفع على file.io
+    try:
+        with open(video_file, "rb") as f:
+            r = requests.post("https://file.io", files={"file": f}, timeout=120).json()
+            if r.get("success") and r.get("link"):
+                print(f"✅ تم الرفع على file.io بنجاح: {r['link']}", flush=True)
+                return r["link"]
+    except Exception as e:
+        print(f"⚠️ تعذر الرفع على file.io: {e}", flush=True)
+
+    # المحاولة 2: رفع على tmpfiles.org
+    try:
+        with open(video_file, "rb") as f:
+            r = requests.post("https://tmpfiles.org/api/v1/upload", files={"file": f}, timeout=120).json()
+            if r.get("status") == "success":
+                direct_url = r["data"]["url"].replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                print(f"✅ تم الرفع على tmpfiles بنجاح: {direct_url}", flush=True)
+                return direct_url
+    except Exception as e:
+        print(f"⚠️ تعذر الرفع على tmpfiles: {e}", flush=True)
+
+    # المحاولة 3: رفع كـ GitHub Release
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     if repo and gh_token:
-        for _ in range(3):
-            tag_name = f"v-quran-{int(time.time()*1000)}"
-            try:
-                res = requests.post(
-                    f"https://api.github.com/repos/{repo}/releases",
-                    headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
-                    json={"tag_name": tag_name, "name": f"Surah Release {tag_name}", "draft": False}, timeout=25
-                ).json()
-                if "upload_url" in res:
-                    u_url = res["upload_url"].split("{")[0]
-                    with open(video_file, "rb") as vf:
-                        up_res = requests.post(f"{u_url}?name=video.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=240).json()
-                    return up_res.get("browser_download_url")
-            except Exception:
-                time.sleep(2)
+        tag_name = f"rel-{int(time.time()*1000)}"
+        try:
+            res = requests.post(
+                f"https://api.github.com/repos/{repo}/releases",
+                headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
+                json={"tag_name": tag_name, "name": f"Surah {tag_name}", "draft": False}, timeout=30
+            ).json()
+            if "upload_url" in res:
+                u_url = res["upload_url"].split("{")[0]
+                with open(video_file, "rb") as vf:
+                    up_res = requests.post(f"{u_url}?name=video.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=180).json()
+                browser_url = up_res.get("browser_download_url")
+                print(f"✅ تم الرفع كـ Release على GitHub: {browser_url}", flush=True)
+                return browser_url
+        except Exception as e:
+            print(f"⚠️ تعذر الرفع على GitHub Releases: {e}", flush=True)
 
-    try:
-        with open(video_file, "rb") as f:
-            r = requests.post("https://tmpfiles.org/api/v1/upload", files={"file": f}, timeout=180).json()
-            if r.get("status") == "success":
-                return r["data"]["url"].replace("tmpfiles.org/", "tmpfiles.org/dl/")
-    except Exception:
-        pass
     return None
 
 def post_to_buffer(video_url, yt_title, caption):
@@ -448,20 +452,32 @@ def post_to_buffer(video_url, yt_title, caption):
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
     graphql_url = "https://api.buffer.com"
     headers = {"Authorization": f"Bearer {buffer_token}", "Content-Type": "application/json"}
-    mutation = """mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) { ... on PostActionSuccess { post { id } } ... on MutationError { message } } }"""
+    mutation = """mutation CreatePost($input: CreatePostInput!) { 
+        createPost(input: $input) { 
+            ... on PostActionSuccess { post { id status } } 
+            ... on MutationError { message } 
+        } 
+    }"""
 
     for ch_id in channel_ids:
         post_input = {
-            "channelId": ch_id, "text": caption, "mode": "shareNow", "schedulingType": "automatic",
+            "channelId": ch_id, 
+            "text": caption, 
+            "mode": "shareNow", 
+            "schedulingType": "automatic",
             "assets": [{"video": {"url": video_url}}]
         }
         post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
 
         try:
-            requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=35)
-            print(f"✅ تم الإرسال إلى Buffer للقناة {ch_id}", flush=True)
+            res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=35).json()
+            post_data = res.get("data", {}).get("createPost", {})
+            if "post" in post_data:
+                print(f"✅ نجح إرسال المنشور لـ Buffer للقناة {ch_id} (Post ID: {post_data['post'].get('id')})", flush=True)
+            else:
+                print(f"❌ رد Buffer للقناة {ch_id}: {post_data.get('message', res)}", flush=True)
         except Exception as e:
-            print(f"❌ خطأ Buffer: {e}", flush=True)
+            print(f"❌ خطأ أثناء الاتصال بـ Buffer: {e}", flush=True)
 
 def notify_telegram(message, cover_file=None):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -490,7 +506,6 @@ if __name__ == "__main__":
     tag = f"quran_{surah_item['number']}_{int(time.time())}"
     print(f"🎬 البدء في إنتاج سورة {surah_item['name']} كاملة ({surah_item['ayahs']} آية) بصوت {reciter['name']}...", flush=True)
 
-    # توجيه ذكي: إذا كانت السورة أكبر من 25 آية يذهب للمحرك السريع لمنع الكراش
     if surah_item["ayahs"] > 25:
         vid_file, cov_file, r_name = build_long_surah_fast(
             surah_item["number"], surah_item["name"], surah_item["ayahs"], reciter, tag
@@ -512,6 +527,8 @@ if __name__ == "__main__":
     pub_url = upload_files(vid_file)
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
+    else:
+        print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
 
     save_history(surah_item["number"])
 
