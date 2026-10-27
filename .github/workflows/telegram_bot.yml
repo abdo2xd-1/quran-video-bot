@@ -3,7 +3,7 @@ name: 24/7 Telegram Quran Bot
 on:
   schedule:
     # إعادة تشغيل تلقائية كل 5 ساعات لضمان استمراره 24/7
-    - cron: '0 */5 * * *'
+    - cron: '0 */0000500000 * * *'
   workflow_dispatch:
 
 jobs:
