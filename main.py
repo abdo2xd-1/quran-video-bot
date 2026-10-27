@@ -181,6 +181,7 @@ def download_chunk_audio(surah_num, start_a, total_ayahs, rec_id, tag):
             except Exception:
                 dur = 5.0
 
+            # 460 ثانية تقريباً (7.6 دقائق) لضمان القبول الكامل على إنستجرام وتيك توك
             if curr_duration + dur > 460.0 and a > start_a:
                 if os.path.exists(part_file): 
                     os.remove(part_file)
@@ -270,7 +271,7 @@ def upload_files(video_file):
 
     return None
 
-def post_to_buffer(video_url, yt_title, caption):
+def post_to_buffer(video_url, caption):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
     if not buffer_token or not channels_raw:
@@ -287,6 +288,11 @@ def post_to_buffer(video_url, yt_title, caption):
     }"""
 
     for ch_id in channel_ids:
+        # تخطي قناة اليوتيوب شورتس لأن الفيديو أطول من 3 دقائق وبالعرض
+        if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
+            print(f"⏭️ تم تخطي قناة اليوتيوب {ch_id} لأنها مخصصة لـ Shorts فقط والفيديو أفقي طويل.", flush=True)
+            continue
+
         post_input = {
             "channelId": ch_id, 
             "text": caption, 
@@ -295,9 +301,8 @@ def post_to_buffer(video_url, yt_title, caption):
             "assets": [{"video": {"url": video_url}}]
         }
 
-        if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
-            post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
-        elif ch_id == "6aa6d1fbea19ca0bde35e91c":
+        # قناة إنستجرام
+        if ch_id == "6aa6d1fbea19ca0bde35e91c":
             post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
         try:
@@ -335,7 +340,6 @@ if __name__ == "__main__":
 
     vid_file, cov_file, end_ayah, r_name = build_part_video(chunk_info, reciter, tag)
 
-    yt_title = f"سورة {chunk_info['name']} (الجزء {chunk_info['part']}) الآيات ({chunk_info['start']}-{end_ayah}) | القارئ {r_name} 🤍"
     caption = (
         f"📖 سورة {chunk_info['name']} - الجزء {chunk_info['part']}\n"
         f"🎙️ بصوت القارئ الشيخ: {r_name}\n"
@@ -346,7 +350,7 @@ if __name__ == "__main__":
 
     pub_url = upload_files(vid_file)
     if pub_url:
-        post_to_buffer(pub_url, yt_title, caption)
+        post_to_buffer(pub_url, caption)
     else:
         print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
 
