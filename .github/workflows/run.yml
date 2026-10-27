@@ -1,9 +1,8 @@
-name: 4x Daily Quran Shorts Engine
-
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'
+    # يعمل كل ساعة عند الدقيقة 23 بالضبط بدون طوابير انتظار
+    - cron: '23 * * * *'
 
 # صلاحيات لكتابة الكود والـ Releases
 permissions:
