@@ -1,9 +1,10 @@
-name: Full Surah Quran Engine
+name: Quran Landscape Engine
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 14 * * *'
+    # 08:00 UTC = 10:00 صباحاً بتوقيت مصر يومياً
+    - cron: '0 8 * * *'
 
 permissions:
   contents: write
@@ -32,21 +33,22 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run Full Surah Engine
+    - name: Run Quran Landscape Engine
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
         BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+        PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
       run: |
         python -u main.py
 
-    - name: Commit & Push Surah History
+    - name: Commit & Push History
       if: always()
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add history_full_surahs.json || true
-        git commit -m "Auto-update full surah history [skip ci]" || echo "No changes to commit"
+        git add history_landscape.json surahs_meta.json || true
+        git commit -m "Auto-update landscape history [skip ci]" || echo "No changes to commit"
         git push || true
