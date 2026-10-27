@@ -31,11 +31,8 @@ jobs:
 
     - name: Run Quran Engine
       env:
-        # النشر المجمع عبر Buffer (يوتيوب، تيك توك، انستجرام)
         BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
         BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
-        
-        # المنصات المباشرة 
         FEBSPOT_EMAIL: ${{ secrets.FEBSPOT_EMAIL }}
         FEBSPOT_PASSWORD: ${{ secrets.FEBSPOT_PASSWORD }}
         COSTV_EMAIL: ${{ secrets.COSTV_EMAIL }}
@@ -43,14 +40,17 @@ jobs:
         DM_API_KEY: ${{ secrets.DM_API_KEY }}
         DM_API_SECRET: ${{ secrets.DM_API_SECRET }}
         ODYSEE_TOKEN: ${{ secrets.ODYSEE_TOKEN }}
-        
-        # منصة X
         X_API_KEY: ${{ secrets.X_API_KEY }}
         X_API_SECRET: ${{ secrets.X_API_SECRET }}
-        
-        # خدمات الإنتاج والسحابة والتلجرام
         CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
         CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
         CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
         CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+      run: |
+        python -u main.py
