@@ -303,6 +303,7 @@ def post_to_x(video_path, tweet_text):
     access_secret = os.getenv("X_ACCESS_SECRET", "").strip()
     
     if not all([api_key, api_secret, access_token, access_secret]):
+        print("⚠️ مفاتيح X غير مكتملة في الـ Secrets، تم التخطي.", flush=True)
         return False
         
     try:
@@ -315,6 +316,7 @@ def post_to_x(video_path, tweet_text):
             access_token=access_token, access_token_secret=access_secret
         )
         client.create_tweet(text=tweet_text[:280], media_ids=[media.media_id])
+        print("✅ تم النشر على منصة X بنجاح!", flush=True)
         return True
     except Exception as e:
         print(f"❌ خطأ أثناء النشر على X: {e}", flush=True)
@@ -325,31 +327,34 @@ def post_to_dailymotion(video_path, title, description):
     api_key = os.getenv("DM_API_KEY", "").strip()
     api_secret = os.getenv("DM_API_SECRET", "").strip()
     if not api_key or not api_secret:
+        print("⚠️ مفاتيح Dailymotion غير موجودة في الـ Secrets.", flush=True)
         return False
     try:
-        # الحصول على Access Token
         auth_res = requests.post("https://api.dailymotion.com/oauth/token", data={
             "grant_type": "client_credentials",
             "client_id": api_key,
             "client_secret": api_secret
-        }, timeout=20).json()
-        token = auth_res.get("access_token")
-        if not token:
+        }, timeout=20)
+        
+        if auth_res.status_code != 200:
+            print(f"❌ خطأ في تصريح Dailymotion: {auth_res.text}", flush=True)
             return False
 
-        # الحصول على رابط الرفع
+        token = auth_res.json().get("access_token")
+        if not token:
+            print(f"❌ لم يتم العثور على Access Token لـ Dailymotion", flush=True)
+            return False
+
         headers = {"Authorization": f"Bearer {token}"}
         url_res = requests.get("https://api.dailymotion.com/file/upload", headers=headers, timeout=20).json()
         upload_url = url_res.get("upload_url")
         if not upload_url:
             return False
 
-        # رفع الملف
         with open(video_path, "rb") as vf:
             file_res = requests.post(upload_url, files={"file": vf}, timeout=120).json()
         file_url = file_res.get("url")
 
-        # نشر الفيديو
         post_data = {
             "url": file_url,
             "title": title[:250],
@@ -359,24 +364,24 @@ def post_to_dailymotion(video_path, title, description):
             "channel": "news"
         }
         res = requests.post("https://api.dailymotion.com/me/videos", headers=headers, data=post_data, timeout=30).json()
-        return "id" in res
+        if "id" in res:
+            print("✅ تم النشر على Dailymotion بنجاح!", flush=True)
+            return True
+        print(f"❌ فشل إنشاء فيديو Dailymotion: {res}", flush=True)
+        return False
     except Exception as e:
         print(f"❌ خطأ أثناء النشر على Dailymotion: {e}", flush=True)
         return False
 
-# 3. منصة Odysee / LBRY
+# 3. منصة Odysee
 def post_to_odysee(video_path, title, description):
     auth_token = os.getenv("ODYSEE_TOKEN", "").strip()
     if not auth_token:
+        print("⚠️ توكن Odysee غير موجود في الـ Secrets.", flush=True)
         return False
     try:
-        # تهيئة رابط الرفع عبر Odysee TUS/v1 API
-        file_size = os.path.getsize(video_path)
         name = f"quran-{int(time.time())}"
-        headers = {
-            "X-Lbry-Auth-Token": auth_token
-        }
-        # رفع الفيديو
+        headers = {"X-Lbry-Auth-Token": auth_token}
         with open(video_path, "rb") as vf:
             files = {"file": (f"{name}.mp4", vf, "video/mp4")}
             data = {
@@ -386,27 +391,47 @@ def post_to_odysee(video_path, title, description):
                 "bid": "0.001",
                 "tags": "quran,islam,shorts"
             }
-            res = requests.post("https://api.odysee.com/publish", headers=headers, data=data, files=files, timeout=180).json()
-            return res.get("success", False)
+            res = requests.post("https://api.odysee.com/publish", headers=headers, data=data, files=files, timeout=180)
+            try:
+                res_json = res.json()
+                if res_json.get("success"):
+                    print("✅ تم النشر على Odysee بنجاح!", flush=True)
+                    return True
+                print(f"❌ خطأ رد Odysee: {res.text}", flush=True)
+            except Exception:
+                print(f"❌ رد غير صالح من Odysee: {res.text[:200]}", flush=True)
+            return False
     except Exception as e:
         print(f"❌ خطأ أثناء النشر على Odysee: {e}", flush=True)
         return False
 
-# 4. منصة COS.TV (Contentos)
+# 4. منصة COS.TV
 def post_to_costv(video_path, title, description):
     email = os.getenv("COSTV_EMAIL", "").strip()
     password = os.getenv("COSTV_PASSWORD", "").strip()
     if not email or not password:
+        print("⚠️ إيميل أو باسورد COS.TV غير موجود في Secrets.", flush=True)
         return False
     try:
         session = requests.Session()
-        login_res = session.post("https://api.cos.tv/account/login", json={"email": email, "password": password}, timeout=20).json()
-        token = login_res.get("data", {}).get("token")
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*"
+        })
+        login_res = session.post("https://api.cos.tv/account/login", json={"email": email, "password": password}, timeout=20)
+        
+        try:
+            res_json = login_res.json()
+        except Exception:
+            print(f"⚠️ تعذر قراءة رد COS.TV كـ JSON (الموقع محمي بجدار حماية/Cloudflare لمنع تسجيل الدخول التلقائي).", flush=True)
+            return False
+
+        token = res_json.get("data", {}).get("token")
         if not token:
+            print(f"❌ فشل تسجيل دخول COS.TV: {login_res.text}", flush=True)
             return False
 
         headers = {"Authorization": f"Bearer {token}"}
-        # جلب رابط رفع الفيديو
         prep = session.post("https://api.cos.tv/video/upload-prepare", headers=headers, json={"filename": os.path.basename(video_path)}, timeout=20).json()
         upload_url = prep.get("data", {}).get("upload_url")
         vid_id = prep.get("data", {}).get("video_id")
@@ -414,14 +439,10 @@ def post_to_costv(video_path, title, description):
         if upload_url:
             with open(video_path, "rb") as vf:
                 requests.put(upload_url, data=vf, timeout=120)
-            
-            # تأكيد النشر
             session.post("https://api.cos.tv/video/publish", headers=headers, json={
-                "video_id": vid_id,
-                "title": title[:100],
-                "description": description,
-                "tags": ["quran", "islam"]
+                "video_id": vid_id, "title": title[:100], "description": description, "tags": ["quran", "islam"]
             }, timeout=20)
+            print("✅ تم النشر على COS.TV بنجاح!", flush=True)
             return True
     except Exception as e:
         print(f"❌ خطأ أثناء النشر على COS.TV: {e}", flush=True)
@@ -432,25 +453,36 @@ def post_to_febspot(video_path, title, description):
     email = os.getenv("FEBSPOT_EMAIL", "").strip()
     password = os.getenv("FEBSPOT_PASSWORD", "").strip()
     if not email or not password:
+        print("⚠️ إيميل أو باسورد Febspot غير موجود في Secrets.", flush=True)
         return False
     try:
         session = requests.Session()
-        login_res = session.post("https://www.febspot.com/api/user/login", data={"email": email, "password": password}, timeout=20).json()
-        user_key = login_res.get("data", {}).get("api_key") or session.cookies.get_dict().get("PHPSESSID")
-        if not user_key:
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*"
+        })
+        login_res = session.post("https://www.febspot.com/api/user/login", data={"email": email, "password": password}, timeout=20)
+        
+        try:
+            res_json = login_res.json()
+        except Exception:
+            print(f"⚠️ تعذر قراءة رد Febspot كـ JSON (الموقع يطلب كابتشا أو محمي بواسطة Cloudflare).", flush=True)
             return False
 
-        # رفع ونشر الفيديو
+        user_key = res_json.get("data", {}).get("api_key") or session.cookies.get_dict().get("PHPSESSID")
+        if not user_key:
+            print(f"❌ فشل تسجيل دخول Febspot: {login_res.text}", flush=True)
+            return False
+
         with open(video_path, "rb") as vf:
             files = {"video_file": vf}
-            payload = {
-                "title": title[:120],
-                "description": description,
-                "tags": "quran, islamic, shorts",
-                "category": "6"
-            }
+            payload = {"title": title[:120], "description": description, "tags": "quran, islamic, shorts", "category": "6"}
             res = session.post("https://www.febspot.com/api/video/upload", data=payload, files=files, timeout=120).json()
-            return res.get("status") in [200, "success", 1]
+            if res.get("status") in [200, "success", 1]:
+                print("✅ تم النشر على Febspot بنجاح!", flush=True)
+                return True
+            print(f"❌ فشل رفع Febspot: {res}", flush=True)
+            return False
     except Exception as e:
         print(f"❌ خطأ أثناء النشر على Febspot: {e}", flush=True)
     return False
@@ -488,6 +520,7 @@ def post_to_buffer(video_url, yt_title, caption):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
     if not buffer_token or not channels_raw:
+        print("⚠️ بيانات Buffer غير مكتملة، تم التخطي.", flush=True)
         return
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
     graphql_url = "https://api.buffer.com"
@@ -506,8 +539,9 @@ def post_to_buffer(video_url, yt_title, caption):
 
         try:
             requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=30)
-        except Exception:
-            pass
+            print(f"✅ تم الإرسال إلى Buffer للقناة {ch_id}", flush=True)
+        except Exception as e:
+            print(f"❌ خطأ في إرسال Buffer: {e}", flush=True)
 
 def notify_telegram(message, cover_file=None):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -550,18 +584,15 @@ if __name__ == "__main__":
         f"#سورة_{item['name']} #قرآن #راحة_نفسية #shorts #reels"
     )
 
-    # 1. النشر على منصة X
+    # تنفيذ عمليات النشر
+    print("\n--- بدء النشر على المنصات ---", flush=True)
     x_ok = post_to_x(vid_file, caption)
-    # 2. النشر على Dailymotion
     dm_ok = post_to_dailymotion(vid_file, yt_title, caption)
-    # 3. النشر على Odysee
     odysee_ok = post_to_odysee(vid_file, yt_title, caption)
-    # 4. النشر على COS.TV
     costv_ok = post_to_costv(vid_file, yt_title, caption)
-    # 5. النشر على Febspot
     febspot_ok = post_to_febspot(vid_file, yt_title, caption)
 
-    # النشر عبر Buffer
+    # رفع الفيديو والنشر على بافر
     pub_url = upload_files(vid_file, cov_file)
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
