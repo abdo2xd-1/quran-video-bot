@@ -59,31 +59,49 @@ def get_all_surahs_meta():
             json.dump(meta, f, ensure_ascii=False)
         return meta
     except Exception:
-        return [{"number": 1, "name": "الفاتحة", "ayahs": 7}, {"number": 18, "name": "الكهف", "ayahs": 110}, {"number": 67, "name": "الملك", "ayahs": 30}]
+        return [
+            {"number": 67, "name": "الملك", "ayahs": 30},
+            {"number": 55, "name": "الرحمن", "ayahs": 78},
+            {"number": 56, "name": "الواقعة", "ayahs": 96},
+            {"number": 71, "name": "نوح", "ayahs": 28},
+            {"number": 18, "name": "الكهف", "ayahs": 110}
+        ]
 
-def pick_unposted_random_clip():
+def pick_unposted_full_surah():
     surahs = get_all_surahs_meta()
     history = load_history()
     posted_keys = set(history.get("posted_keys", []))
 
-    for _ in range(150):
-        surah = random.choice(surahs)
+    # فلترة السور عدا الكهف لبقية أيام الأسبوع
+    candidates = [s for s in surahs if s["number"] != 18]
+    random.shuffle(candidates)
+
+    for surah in candidates:
         s_num = surah["number"]
         s_name = surah["name"]
         total_ayahs = surah["ayahs"]
 
-        chunk_size = random.randint(2, 4) if total_ayahs > 30 else random.randint(2, min(5, total_ayahs))
-        if total_ayahs <= 3:
-            start_a, end_a = 1, total_ayahs
-        else:
-            start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
-            end_a = min(total_ayahs, start_a + chunk_size - 1)
-
-        clip_key = f"{s_num}_{start_a}_{end_a}"
+        clip_key = f"full_surah_{s_num}"
         if clip_key not in posted_keys:
-            return {"surah": s_num, "name": s_name, "start": start_a, "end": end_a, "key": clip_key, "badge": f"سورة {s_name} 🌿"}
+            return {
+                "surah": s_num,
+                "name": s_name,
+                "start": 1,
+                "end": total_ayahs,
+                "key": clip_key,
+                "badge": f"سورة {s_name} كاملة 🌿"
+            }
 
-    return {"surah": 67, "name": "الملك", "start": 1, "end": 4, "key": f"67_1_4_{int(time.time())}", "badge": "سورة الملك 🤍"}
+    # إذا تم نشر جميع السور يتم البدء مجدداً
+    surah = random.choice(candidates)
+    return {
+        "surah": surah["number"],
+        "name": surah["name"],
+        "start": 1,
+        "end": surah["ayahs"],
+        "key": f"full_surah_{surah['number']}_{int(time.time())}",
+        "badge": f"سورة {surah['name']} كاملة 🌿"
+    }
 
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
@@ -139,7 +157,6 @@ def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
             continue
     return False
 
-# تصميم إطار الآيات بالعرض (1920x1080)
 def render_quran_frame_landscape(words, active_idx, badge_text, font_b64):
     chrome_bin = get_chrome()
     words_html = []
@@ -216,7 +233,6 @@ def render_quran_frame_landscape(words, active_idx, badge_text, font_b64):
     if os.path.exists(h_path): os.remove(h_path)
     return p_path
 
-# تصميم الغلاف العريض
 def generate_landscape_cover(surah_name, sub_title, reciter_name, font_b64, out_cover):
     chrome_bin = get_chrome()
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
@@ -274,7 +290,7 @@ def generate_landscape_cover(surah_name, sub_title, reciter_name, font_b64, out_
 </style></head>
 <body><div class="box">
   <div class="badge">🕌 تلاوة مباركة خاشعة 🌿</div>
-  <div class="title">سُورَةُ {surah_name}</div>
+  <div class="title">سُورَةُ {surah_name} كَامِلَةً</div>
   <div class="reciter">بصوت القارئ الشيخ / {reciter_name}</div>
   <div class="sub">{sub_title}</div>
 </div></body></html>"""
@@ -296,24 +312,30 @@ def build_landscape_quran_video(surah_num, surah_name, start_a, end_a, badge_lab
     font_b64 = get_font_base64()
 
     ayahs = []
+    print(f"📥 جاري جلب آيات سورة {surah_name} كاملة ({start_a} إلى {end_a})...", flush=True)
     for a in range(start_a, end_a + 1):
-        t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=15).json()
-        txt = clean_arabic(t_res.get("data", {}).get("text", ""))
-        if a == 1 and surah_num != 1:
-            txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
+        try:
+            t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=15).json()
+            txt = clean_arabic(t_res.get("data", {}).get("text", ""))
+            if a == 1 and surah_num != 1:
+                txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
-        aud_file = f"aud_{tag}_{a}.mp3"
-        download_ayah_safe(surah_num, a, rec_id, aud_file)
-        ayahs.append({"text": txt, "audio": aud_file})
+            aud_file = f"aud_{tag}_{a}.mp3"
+            download_ayah_safe(surah_num, a, rec_id, aud_file)
+            ayahs.append({"text": txt, "audio": aud_file})
+        except Exception:
+            continue
 
     audio_clips, text_clips = [], []
     curr_t = 0.0
 
     for ay in ayahs:
+        if not os.path.exists(ay["audio"]):
+            continue
         ac = AudioFileClip(ay["audio"])
         audio_clips.append(ac)
         words = ay["text"].split()
-        tot_chars = sum(len(w) for w in words)
+        tot_chars = sum(len(w) for w in words) if words else 1
         w_start = curr_t
         for idx, w in enumerate(words):
             w_dur = (len(w) / tot_chars) * ac.duration
@@ -323,9 +345,8 @@ def build_landscape_quran_video(surah_num, surah_name, start_a, end_a, badge_lab
         curr_t += ac.duration
 
     final_audio = concatenate_audioclips(audio_clips)
-    tot_dur = curr_t + 0.8
+    tot_dur = curr_t + 1.0
 
-    # تحميل فيديو خلفية بالعرض (Landscape)
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"fast_bg_{tag}.mp4"
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
@@ -351,7 +372,7 @@ def build_landscape_quran_video(surah_num, surah_name, start_a, end_a, badge_lab
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio)
 
     cover_file = f"cover_{tag}.jpg"
-    generate_landscape_cover(surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
+    generate_landscape_cover(surah_name, f"سورة {surah_name} كاملة ({end_a} آية)", rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.12)
 
     temp_joined = f"temp_{tag}.mp4"
@@ -445,38 +466,36 @@ def notify_telegram(message, cover_file=None):
 
 if __name__ == "__main__":
     now_utc = datetime.datetime.utcnow()
-    # الجمعة توافق weekday == 4 (الساعة 10 صباحاً بتوقيت مصر = 8 صباحاً بتوقيت UTC)
     is_friday = (now_utc.weekday() == 4)
     reciter = random.choice(RECITERS_POOL)
 
     if is_friday:
-        # آيات سورة الكهف ليوم الجمعة
         item = {
             "surah": 18, 
             "name": "الكهف", 
             "start": 1, 
-            "end": 6, 
-            "badge": "سورة الكهف • نور ما بين الجمعتين 🌿", 
-            "key": f"friday_kahf_{now_utc.strftime('%Y_%U')}"
+            "end": 110, 
+            "badge": "سورة الكهف كاملة • نور ما بين الجمعتين 🌿", 
+            "key": f"friday_kahf_full_{now_utc.strftime('%Y_%U')}"
         }
-        print("🌟 موعد يوم الجمعة: إنتاج مقطع سورة الكهف المباركة...", flush=True)
+        print("🌟 يوم الجمعة: إنتاج سورة الكهف كاملة (1-110)...", flush=True)
     else:
-        item = pick_unposted_random_clip()
+        item = pick_unposted_full_surah()
 
     tag = f"land_{item['key']}_{int(time.time())}"
-    print(f"🎬 اختيار مقطع جديد بالعرض (16:9): سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
+    print(f"🎬 اختيار سورة كاملة بالعرض (16:9): سورة {item['name']} كاملة من الآية ({item['start']} إلى {item['end']})...", flush=True)
 
     vid_file, cov_file, r_name = build_landscape_quran_video(
         item["surah"], item["name"], item["start"], item["end"],
-        f"سورة {item['name']} • تلاوة خاشعة", reciter, tag
+        f"سورة {item['name']} كاملة", reciter, tag
     )
 
-    yt_title = f"تلاوة خاشعة تريح القلب | سورة {item['name']} ({item['start']}-{item['end']}) - القارئ {r_name} 🤍"
+    yt_title = f"سورة {item['name']} كاملة تلاوة خاشعة تريح القلب | القارئ {r_name} 🤍"
     caption = (
-        f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
-        f"🎙️ بصوت القارئ: {r_name}\n\n"
-        f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء أحزاننا وذهاب همومنا 🤍\n\n"
-        f"#سورة_{item['name']} #قرآن_كريم #تلاوة_خاشعة #راحة_نفسية"
+        f"📖 سورة {item['name']} كاملة من الآية ({item['start']} إلى {item['end']})\n"
+        f"🎙️ بصوت القارئ الشيخ: {r_name}\n\n"
+        f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء أحزاننا 🤍\n\n"
+        f"#سورة_{item['name']} #قرآن_كريم #سورة_كاملة #تلاوة_خاشعة"
     )
 
     pub_url = upload_files(vid_file, cov_file)
@@ -486,10 +505,10 @@ if __name__ == "__main__":
     save_history(item["key"])
 
     report = (
-        f"✨ <b>تم إنتاج ونشر فيديو قرآني جديد (بالعرض 16:9)!</b>\n\n"
-        f"📖 <b>السورة:</b> {item['name']} ({item['start']}-{item['end']})\n"
+        f"✨ <b>تم إنتاج ونشر سورة كاملة بالعرض (16:9)!</b>\n\n"
+        f"📖 <b>السورة:</b> سورة {item['name']} (من الآية {item['start']} إلى {item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
-        f"🖥️ <b>الأبعاد:</b> 1920x1080 (أفقي كامل)\n"
+        f"🖥️ <b>الأبعاد:</b> 1920x1080 (أفقي كامل بكلمات مذهبة)\n"
         f"🔒 <b>كود السجل:</b> <code>{item['key']}</code>\n"
         f"🔗 <b>الرابط:</b> <a href='{pub_url}'>مشاهدة المقطع</a>"
     )
@@ -497,4 +516,4 @@ if __name__ == "__main__":
 
     if os.path.exists(vid_file): os.remove(vid_file)
     if os.path.exists(cov_file): os.remove(cov_file)
-    print("=== اكتمل الرندر بالعرض، التحديث، والنشر بنجاح ===", flush=True)
+    print("=== اكتمل الرندر لسورة كاملة، التحديث، والنشر بنجاح ===", flush=True)
