@@ -3,7 +3,7 @@ name: 4x Daily Quran Shorts Engine
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: '0 * * * *'
 
 # صلاحيات لكتابة الكود والـ Releases
 permissions:
