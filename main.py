@@ -25,7 +25,6 @@ from moviepy.editor import (
 HISTORY_FILE = "history.json"
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
-# قائمة قراء آمنة وخالية من الحظر الدولي
 RECITERS_POOL = [
     {"id": "Hudhaify_128kbps", "name": "علي الحذيفي"},
     {"id": "Abdullah_Basfar_192kbps", "name": "عبد الله بسفر"},
@@ -296,6 +295,7 @@ def simulate_copyright_check(video_path):
     print(f"✅ فحص البصمة الصوتية: تم كسر التطابق بنسبة أمان {score:.1f}%", flush=True)
     return f"{score:.1f}%"
 
+# 1. منصة X
 def post_to_x(video_path, tweet_text):
     api_key = os.getenv("X_API_KEY", "").strip()
     api_secret = os.getenv("X_API_SECRET", "").strip()
@@ -303,11 +303,9 @@ def post_to_x(video_path, tweet_text):
     access_secret = os.getenv("X_ACCESS_SECRET", "").strip()
     
     if not all([api_key, api_secret, access_token, access_secret]):
-        print("⚠️ مفاتيح منصة X غير مكتملة في Secrets (تأكد من إضافة الـ 4 مفاتيح)، تم تخطي النشر على X.", flush=True)
         return False
         
     try:
-        print("🐦 جاري رفع الفيديو والنشر على منصة X...", flush=True)
         auth = tweepy.OAuth1UserHandler(api_key, api_secret, access_token, access_secret)
         api_v1 = tweepy.API(auth)
         media = api_v1.media_upload(video_path, media_category="tweet_video")
@@ -317,11 +315,145 @@ def post_to_x(video_path, tweet_text):
             access_token=access_token, access_token_secret=access_secret
         )
         client.create_tweet(text=tweet_text[:280], media_ids=[media.media_id])
-        print("✅ تم النشر على منصة X بنجاح!", flush=True)
         return True
     except Exception as e:
-        print(f"❌ خطأ أثناء النشر على منصة X: {e}", flush=True)
+        print(f"❌ خطأ أثناء النشر على X: {e}", flush=True)
         return False
+
+# 2. منصة Dailymotion
+def post_to_dailymotion(video_path, title, description):
+    api_key = os.getenv("DM_API_KEY", "").strip()
+    api_secret = os.getenv("DM_API_SECRET", "").strip()
+    if not api_key or not api_secret:
+        return False
+    try:
+        # الحصول على Access Token
+        auth_res = requests.post("https://api.dailymotion.com/oauth/token", data={
+            "grant_type": "client_credentials",
+            "client_id": api_key,
+            "client_secret": api_secret
+        }, timeout=20).json()
+        token = auth_res.get("access_token")
+        if not token:
+            return False
+
+        # الحصول على رابط الرفع
+        headers = {"Authorization": f"Bearer {token}"}
+        url_res = requests.get("https://api.dailymotion.com/file/upload", headers=headers, timeout=20).json()
+        upload_url = url_res.get("upload_url")
+        if not upload_url:
+            return False
+
+        # رفع الملف
+        with open(video_path, "rb") as vf:
+            file_res = requests.post(upload_url, files={"file": vf}, timeout=120).json()
+        file_url = file_res.get("url")
+
+        # نشر الفيديو
+        post_data = {
+            "url": file_url,
+            "title": title[:250],
+            "description": description[:1000],
+            "tags": "quran,shorts,islam",
+            "published": "true",
+            "channel": "news"
+        }
+        res = requests.post("https://api.dailymotion.com/me/videos", headers=headers, data=post_data, timeout=30).json()
+        return "id" in res
+    except Exception as e:
+        print(f"❌ خطأ أثناء النشر على Dailymotion: {e}", flush=True)
+        return False
+
+# 3. منصة Odysee / LBRY
+def post_to_odysee(video_path, title, description):
+    auth_token = os.getenv("ODYSEE_TOKEN", "").strip()
+    if not auth_token:
+        return False
+    try:
+        # تهيئة رابط الرفع عبر Odysee TUS/v1 API
+        file_size = os.path.getsize(video_path)
+        name = f"quran-{int(time.time())}"
+        headers = {
+            "X-Lbry-Auth-Token": auth_token
+        }
+        # رفع الفيديو
+        with open(video_path, "rb") as vf:
+            files = {"file": (f"{name}.mp4", vf, "video/mp4")}
+            data = {
+                "name": name,
+                "title": title[:100],
+                "description": description,
+                "bid": "0.001",
+                "tags": "quran,islam,shorts"
+            }
+            res = requests.post("https://api.odysee.com/publish", headers=headers, data=data, files=files, timeout=180).json()
+            return res.get("success", False)
+    except Exception as e:
+        print(f"❌ خطأ أثناء النشر على Odysee: {e}", flush=True)
+        return False
+
+# 4. منصة COS.TV (Contentos)
+def post_to_costv(video_path, title, description):
+    email = os.getenv("COSTV_EMAIL", "").strip()
+    password = os.getenv("COSTV_PASSWORD", "").strip()
+    if not email or not password:
+        return False
+    try:
+        session = requests.Session()
+        login_res = session.post("https://api.cos.tv/account/login", json={"email": email, "password": password}, timeout=20).json()
+        token = login_res.get("data", {}).get("token")
+        if not token:
+            return False
+
+        headers = {"Authorization": f"Bearer {token}"}
+        # جلب رابط رفع الفيديو
+        prep = session.post("https://api.cos.tv/video/upload-prepare", headers=headers, json={"filename": os.path.basename(video_path)}, timeout=20).json()
+        upload_url = prep.get("data", {}).get("upload_url")
+        vid_id = prep.get("data", {}).get("video_id")
+
+        if upload_url:
+            with open(video_path, "rb") as vf:
+                requests.put(upload_url, data=vf, timeout=120)
+            
+            # تأكيد النشر
+            session.post("https://api.cos.tv/video/publish", headers=headers, json={
+                "video_id": vid_id,
+                "title": title[:100],
+                "description": description,
+                "tags": ["quran", "islam"]
+            }, timeout=20)
+            return True
+    except Exception as e:
+        print(f"❌ خطأ أثناء النشر على COS.TV: {e}", flush=True)
+    return False
+
+# 5. منصة Febspot
+def post_to_febspot(video_path, title, description):
+    email = os.getenv("FEBSPOT_EMAIL", "").strip()
+    password = os.getenv("FEBSPOT_PASSWORD", "").strip()
+    if not email or not password:
+        return False
+    try:
+        session = requests.Session()
+        login_res = session.post("https://www.febspot.com/api/user/login", data={"email": email, "password": password}, timeout=20).json()
+        user_key = login_res.get("data", {}).get("api_key") or session.cookies.get_dict().get("PHPSESSID")
+        if not user_key:
+            return False
+
+        # رفع ونشر الفيديو
+        with open(video_path, "rb") as vf:
+            files = {"video_file": vf}
+            payload = {
+                "title": title[:120],
+                "description": description,
+                "tags": "quran, islamic, shorts",
+                "category": "6"
+            }
+            res = session.post("https://www.febspot.com/api/video/upload", data=payload, files=files, timeout=120).json()
+            return res.get("status") in [200, "success", 1]
+    except Exception as e:
+        print(f"❌ خطأ أثناء النشر على Febspot: {e}", flush=True)
+    return False
 
 def upload_files(video_file, cover_file):
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
@@ -418,9 +550,16 @@ if __name__ == "__main__":
         f"#سورة_{item['name']} #قرآن #راحة_نفسية #shorts #reels"
     )
 
-    # النشر على منصة X
-    x_status = post_to_x(vid_file, caption)
-    x_badge = "✅ تم النشر" if x_status else "⏭️ تم التخطي"
+    # 1. النشر على منصة X
+    x_ok = post_to_x(vid_file, caption)
+    # 2. النشر على Dailymotion
+    dm_ok = post_to_dailymotion(vid_file, yt_title, caption)
+    # 3. النشر على Odysee
+    odysee_ok = post_to_odysee(vid_file, yt_title, caption)
+    # 4. النشر على COS.TV
+    costv_ok = post_to_costv(vid_file, yt_title, caption)
+    # 5. النشر على Febspot
+    febspot_ok = post_to_febspot(vid_file, yt_title, caption)
 
     # النشر عبر Buffer
     pub_url = upload_files(vid_file, cov_file)
@@ -433,8 +572,13 @@ if __name__ == "__main__":
         f"✨ <b>تم إنتاج ونشر مقطع جديد وحصري!</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']} ({item['start']}-{item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
-        f"🛡️ <b>حالة الحقوق:</b> آمن بنسبة {safety_score} ✅\n"
-        f"🐦 <b>منصة X:</b> {x_badge}\n"
+        f"🛡️ <b>حالة الحقوق:</b> آمن بنسبة {safety_score} ✅\n\n"
+        f"📊 <b>حالة المنصات:</b>\n"
+        f"• X: {'✅' if x_ok else '❌'}\n"
+        f"• Dailymotion: {'✅' if dm_ok else '❌'}\n"
+        f"• Odysee: {'✅' if odysee_ok else '❌'}\n"
+        f"• COS.TV: {'✅' if costv_ok else '❌'}\n"
+        f"• Febspot: {'✅' if febspot_ok else '❌'}\n\n"
         f"🔒 <b>كود السجل:</b> <code>{item['key']}</code>\n"
         f"🔗 <b>الرابط:</b> <a href='{pub_url}'>مشاهدة المقطع</a>"
     )
@@ -442,4 +586,4 @@ if __name__ == "__main__":
 
     if os.path.exists(vid_file): os.remove(vid_file)
     if os.path.exists(cov_file): os.remove(cov_file)
-    print("=== اكتمل الرندر، فحص الحقوق، والنشر بنجاح ===", flush=True) 
+    print("=== اكتمل الرندر، فحص الحقوق، والنشر بنجاح ===", flush=True)
