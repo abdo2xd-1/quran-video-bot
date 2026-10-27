@@ -398,29 +398,19 @@ def build_short_surah_words(surah_num, surah_name, total_ayahs, reciter_info, ta
     return out_file, cover_file, rec_name
 
 def upload_files(video_file):
-    print("📤 جاري رفع ملف الفيديو للحصول على رابط مباشر لـ Buffer...", flush=True)
-    # المحاولة 1: رفع على file.io
+    print("📤 جاري رفع ملف الفيديو للحصول على رابط مباشر فائق السرعة لـ Buffer...", flush=True)
+    # خيار 1: Catbox.moe (رابط مباشر دائم وسريع تدعمه خوادم Buffer بدون أخطاء قراءة)
     try:
         with open(video_file, "rb") as f:
-            r = requests.post("https://file.io", files={"file": f}, timeout=120).json()
-            if r.get("success") and r.get("link"):
-                print(f"✅ تم الرفع على file.io بنجاح: {r['link']}", flush=True)
-                return r["link"]
+            r = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=180)
+            if r.status_code == 200 and r.text.startswith("http"):
+                url = r.text.strip()
+                print(f"✅ تم الرفع على Catbox بنجاح: {url}", flush=True)
+                return url
     except Exception as e:
-        print(f"⚠️ تعذر الرفع على file.io: {e}", flush=True)
+        print(f"⚠️ تعذر الرفع على Catbox: {e}", flush=True)
 
-    # المحاولة 2: رفع على tmpfiles.org
-    try:
-        with open(video_file, "rb") as f:
-            r = requests.post("https://tmpfiles.org/api/v1/upload", files={"file": f}, timeout=120).json()
-            if r.get("status") == "success":
-                direct_url = r["data"]["url"].replace("tmpfiles.org/", "tmpfiles.org/dl/")
-                print(f"✅ تم الرفع على tmpfiles بنجاح: {direct_url}", flush=True)
-                return direct_url
-    except Exception as e:
-        print(f"⚠️ تعذر الرفع على tmpfiles: {e}", flush=True)
-
-    # المحاولة 3: رفع كـ GitHub Release
+    # خيار 2: GitHub Releases
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     if repo and gh_token:
@@ -467,7 +457,17 @@ def post_to_buffer(video_url, yt_title, caption):
             "schedulingType": "automatic",
             "assets": [{"video": {"url": video_url}}]
         }
-        post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
+
+        # توجيه الـ Metadata المناسب لكل شبكة بحسب نوع الـ ID
+        if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
+            # قناة اليوتيوب
+            post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
+        elif ch_id == "6aa6d1fbea19ca0bde35e91c":
+            # قناة إنستجرام
+            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
+        elif ch_id == "6aa591a7cd8b9c702c592741":
+            # قناة تيك توك
+            post_input["metadata"] = {"tiktok": {"privacy": "PUBLIC_TO_EVERYONE"}}
 
         try:
             res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=35).json()
