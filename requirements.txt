@@ -1,12 +1,8 @@
 moviepy
-Pillow
-numpy
-imageio
-imageio_ffmpeg
-tqdm
 requests
 tweepy
 selenium
 webdriver-manager
-google-api-python-client
-google-auth-oauthlib
+cloudinary
+arabic-reshaper
+python-bidi
