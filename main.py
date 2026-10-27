@@ -399,18 +399,7 @@ def build_short_surah_words(surah_num, surah_name, total_ayahs, reciter_info, ta
 
 def upload_files(video_file):
     print("📤 جاري رفع ملف الفيديو للحصول على رابط مباشر فائق السرعة لـ Buffer...", flush=True)
-    # خيار 1: Catbox.moe (رابط مباشر دائم وسريع تدعمه خوادم Buffer بدون أخطاء قراءة)
-    try:
-        with open(video_file, "rb") as f:
-            r = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=180)
-            if r.status_code == 200 and r.text.startswith("http"):
-                url = r.text.strip()
-                print(f"✅ تم الرفع على Catbox بنجاح: {url}", flush=True)
-                return url
-    except Exception as e:
-        print(f"⚠️ تعذر الرفع على Catbox: {e}", flush=True)
-
-    # خيار 2: GitHub Releases
+    # 1. GitHub Releases المباشر
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     if repo and gh_token:
@@ -426,10 +415,22 @@ def upload_files(video_file):
                 with open(video_file, "rb") as vf:
                     up_res = requests.post(f"{u_url}?name=video.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=180).json()
                 browser_url = up_res.get("browser_download_url")
-                print(f"✅ تم الرفع كـ Release على GitHub: {browser_url}", flush=True)
-                return browser_url
+                if browser_url:
+                    print(f"✅ تم الرفع كـ Release على GitHub: {browser_url}", flush=True)
+                    return browser_url
         except Exception as e:
-            print(f"⚠️ تعذر الرفع على GitHub Releases: {e}", flush=True)
+            print(f"⚠️ خطأ في GitHub Releases: {e}", flush=True)
+
+    # 2. Catbox.moe
+    try:
+        with open(video_file, "rb") as f:
+            r = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=180)
+            if r.status_code == 200 and r.text.startswith("http"):
+                url = r.text.strip()
+                print(f"✅ تم الرفع على Catbox بنجاح: {url}", flush=True)
+                return url
+    except Exception as e:
+        print(f"⚠️ خطأ في Catbox: {e}", flush=True)
 
     return None
 
@@ -458,16 +459,27 @@ def post_to_buffer(video_url, yt_title, caption):
             "assets": [{"video": {"url": video_url}}]
         }
 
-        # توجيه الـ Metadata المناسب لكل شبكة بحسب نوع الـ ID
+        # تخصيص الـ Metadata لتجنب رفض المنصات
         if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
-            # قناة اليوتيوب
-            post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
+            # قناة اليوتيوب: نشر كفيديو عادي كامل (بدون قيود Shorts)
+            post_input["metadata"] = {
+                "youtube": {
+                    "title": yt_title[:95],
+                    "categoryId": "27",
+                    "privacy": "public"
+                }
+            }
         elif ch_id == "6aa6d1fbea19ca0bde35e91c":
-            # قناة إنستجرام
-            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
+            # قناة إنستجرام: نشر كـ Reel
+            post_input["metadata"] = {
+                "instagram": {
+                    "type": "reel",
+                    "shouldShareToFeed": True
+                }
+            }
         elif ch_id == "6aa591a7cd8b9c702c592741":
-            # قناة تيك توك
-            post_input["metadata"] = {"tiktok": {"privacy": "PUBLIC_TO_EVERYONE"}}
+            # قناة تيك توك: إرسال بدون حقول privacy لعدم دعمها في GraphQL Buffer
+            post_input["metadata"] = {}
 
         try:
             res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=35).json()
