@@ -607,11 +607,26 @@ def post_to_odysee(video_file, title, description, tags=None):
 
     try:
         print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee...", flush=True)
+        file_name = os.path.basename(video_file)
         file_size = os.path.getsize(video_file)
         clean_stream_name = f"quran-short-{int(time.time())}"
 
-        upload_endpoint = "https://upload.odysee.com/upload"
-        meta_filename = base64.b64encode(os.path.basename(video_file).encode()).decode()
+        server_res = requests.post(
+            "https://api.na-backend.odysee.com/api/v1/proxy?m=file_upload",
+            json={
+                "jsonrpc": "2.0",
+                "method": "file_upload",
+                "params": {"auth_token": auth_token},
+                "id": int(time.time())
+            },
+            timeout=30
+        ).json()
+
+        upload_endpoint = server_res.get("result")
+        if not upload_endpoint:
+            upload_endpoint = "https://backend.odysee.com/api/v1/proxy"
+
+        meta_filename = base64.b64encode(file_name.encode()).decode()
         meta_token = base64.b64encode(auth_token.encode()).decode()
 
         init_headers = {
@@ -619,12 +634,12 @@ def post_to_odysee(video_file, title, description, tags=None):
             "Upload-Length": str(file_size),
             "Upload-Metadata": f"filename {meta_filename},auth_token {meta_token}"
         }
-        
+
         init_res = requests.post(upload_endpoint, headers=init_headers, timeout=30)
         upload_location = init_res.headers.get("Location")
 
         if not upload_location:
-            print(f"❌ تعذر استخراج رابط رفع Odysee: {init_res.status_code}", flush=True)
+            print(f"❌ تعذر بدء جلسة الرفع على Odysee: {init_res.status_code}", flush=True)
             return None
 
         with open(video_file, "rb") as vf:
@@ -635,6 +650,7 @@ def post_to_odysee(video_file, title, description, tags=None):
             }
             requests.patch(upload_location, headers=patch_headers, data=vf, timeout=180)
 
+        uploaded_file_id = upload_location.split("/")[-1]
         payload = {
             "jsonrpc": "2.0",
             "method": "publish",
@@ -646,15 +662,19 @@ def post_to_odysee(video_file, title, description, tags=None):
                 "tags": tags,
                 "languages": ["ar"],
                 "bid": "0.0001",
-                "file_path": upload_location.split("/")[-1]
+                "file_path": uploaded_file_id
             },
             "id": int(time.time())
         }
-        
+
         if channel_name:
             payload["params"]["channel_name"] = channel_name
 
-        pub_res = requests.post("https://api.na-backend.odysee.com/api/v1/proxy", json=payload, timeout=40).json()
+        pub_res = requests.post(
+            "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
+            json=payload,
+            timeout=40
+        ).json()
 
         claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
         claim_name = claim_info.get("name")
