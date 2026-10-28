@@ -44,6 +44,8 @@ jobs:
         DAILYMOTION_SECRET: ${{ secrets.DAILYMOTION_SECRET }}
         DAILYMOTION_USERNAME: ${{ secrets.DAILYMOTION_USERNAME }}
         DAILYMOTION_PASSWORD: ${{ secrets.DAILYMOTION_PASSWORD }}
+        ODYSEE_AUTH_TOKEN: ${{ secrets.ODYSEE_AUTH_TOKEN }}
+        ODYSEE_CHANNEL_NAME: ${{ secrets.ODYSEE_CHANNEL_NAME }}
       run: |
         python -u main.py
 
