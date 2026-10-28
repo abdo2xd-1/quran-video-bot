@@ -607,15 +607,15 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
         print("🚀 جاري نشر الفيديو مباشرة إلى منصة Odysee عبر Remote URL...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
         headers = {
+            "Content-Type": "application/json-rpc",
             "X-Lbry-Auth-Token": auth_token
         }
 
-        # 1. استخراج معرف القناة المعتمد
         channel_id = None
         try:
             ch_res = requests.post(
                 "https://api.na-backend.odysee.com/api/v1/proxy?m=channel_list",
-                headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
+                headers=headers,
                 json={"jsonrpc": "2.0", "method": "channel_list", "params": {}, "id": 1},
                 timeout=15
             ).json()
@@ -626,24 +626,30 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
         except Exception:
             channel_id = None
 
-        # 2. النشر عبر Form-Data لبوابة النشر الرسمية بدون تمرير auth_token في البيانات
-        publish_data = {
+        publish_params = {
             "name": clean_stream_name,
             "title": title[:95],
             "description": description,
-            "tags": json.dumps(tags),
-            "languages": json.dumps(["ar"]),
+            "tags": tags,
+            "languages": ["ar"],
             "bid": "0.0001",
             "remote_url": remote_video_url
         }
 
         if channel_id:
-            publish_data["channel_id"] = channel_id
+            publish_params["channel_id"] = channel_id
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "publish",
+            "params": publish_params,
+            "id": int(time.time())
+        }
 
         pub_res = requests.post(
             "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
             headers=headers,
-            data=publish_data,
+            json=payload,
             timeout=60
         ).json()
 
