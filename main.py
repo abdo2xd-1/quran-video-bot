@@ -24,10 +24,10 @@ HISTORY_FILE = "history_shorts_all.json"
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
 RECITERS_POOL = [
-    {"id": "Hudhaify_128kbps", "name": "علي الحذيفي"},
-    {"id": "Abdullah_Basfar_192kbps", "name": "عبد الله بسفر"},
-    {"id": "Abu_Bakr_Ash-Shaatree_128kbps", "name": "أبو بكر الشاطري"},
-    {"id": "Muhammad_Ayyoub_128kbps", "name": "محمد أيوب"}
+    {"edition": "ar.alafasy", "name": "مشاري العفاسي", "everyayah": "Alafasy_128kbps"},
+    {"edition": "ar.hudhaify", "name": "علي الحذيفي", "everyayah": "Hudhaify_128kbps"},
+    {"edition": "ar.shaatree", "name": "أبو بكر الشاطري", "everyayah": "Abu_Bakr_Ash-Shaatree_128kbps"},
+    {"edition": "ar.ayyoub", "name": "محمد أيوب", "everyayah": "Muhammad_Ayyoub_128kbps"}
 ]
 
 def load_history():
@@ -36,13 +36,10 @@ def load_history():
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
-            return {"posted_keys": []}
-    return {"posted_keys": []}
+            return {"posted_keys": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
+    return {"posted_keys": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
 
-def save_history(clip_key):
-    history = load_history()
-    if clip_key not in history["posted_keys"]:
-        history["posted_keys"].append(clip_key)
+def save_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
@@ -61,13 +58,49 @@ def get_all_114_surahs():
     except Exception:
         return [{"number": 1, "name": "الفاتحة", "ayahs": 7}, {"number": 18, "name": "الكهف", "ayahs": 110}, {"number": 67, "name": "الملك", "ayahs": 30}]
 
-def pick_unposted_clip_all_quran():
+def get_friday_kahf_chunk(history, current_week_str):
+    """تقسيم سورة الكهف إلى أجزاء شورتس متتالية طوال ساعات يوم الجمعة"""
+    k_prog = history.get("kahf_progress", {})
+    # إذا كانت جمعة جديدة نبدأ من الآية 1 والجزء 1
+    if k_prog.get("week") != current_week_str:
+        start_a = 1
+        part_num = 1
+    else:
+        start_a = k_prog.get("next_ayah", 1)
+        part_num = k_prog.get("part", 1)
+
+    # إذا انتهت السورة (110 آيات) تعود من البداية
+    if start_a > 110:
+        start_a = 1
+        part_num = 1
+
+    end_a = min(110, start_a + 2) # 3 آيات لكل فيديو شورتس
+    clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
+
+    # تحديث التقدم للساعة القادمة
+    history["kahf_progress"] = {
+        "week": current_week_str,
+        "next_ayah": end_a + 1,
+        "part": part_num + 1
+    }
+
+    return {
+        "surah": 18,
+        "name": "الكهف",
+        "start": start_a,
+        "end": end_a,
+        "part": part_num,
+        "key": clip_key,
+        "badge": f"الكهف (جزء {part_num}) 🌿"
+    }
+
+def pick_unposted_clip_all_quran(history):
     surahs = get_all_114_surahs()
-    history = load_history()
     posted_keys = set(history.get("posted_keys", []))
 
     for _ in range(300):
         surah = random.choice(surahs)
+        # استثناء سورة الكهف لبقية أيام الأسبوع لأنها مخصصة للجمعة
         if surah["number"] == 18:
             continue
             
@@ -75,8 +108,7 @@ def pick_unposted_clip_all_quran():
         s_name = surah["name"]
         total_ayahs = surah["ayahs"]
 
-        # تحديد عدد الآيات: 3 آيات على الأقل، أو 4 إذا كانت السورة طويلة
-        chunk_size = 4 if total_ayahs >= 10 else (3 if total_ayahs >= 3 else total_ayahs)
+        chunk_size = 3 if total_ayahs >= 3 else total_ayahs
         start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
         end_a = min(total_ayahs, start_a + chunk_size - 1)
 
@@ -87,15 +119,14 @@ def pick_unposted_clip_all_quran():
                 "name": s_name,
                 "start": start_a,
                 "end": end_a,
+                "part": None,
                 "key": clip_key,
                 "badge": f"سورة {s_name} 🌿"
             }
 
     history["posted_keys"] = []
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f)
-    s = random.choice([x for x in surahs if x["ayahs"] >= 3])
-    return {"surah": s["number"], "name": s["name"], "start": 1, "end": 3, "key": f"{s['number']}_1_3_{int(time.time())}", "badge": f"سورة {s['name']} 🌿"}
+    s = random.choice([x for x in surahs if x["ayahs"] >= 3 and x["number"] != 18])
+    return {"surah": s["number"], "name": s["name"], "start": 1, "end": 3, "part": None, "key": f"{s['number']}_1_3_{int(time.time())}", "badge": f"سورة {s['name']} 🌿"}
 
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
@@ -124,32 +155,40 @@ def apply_anti_copyright(raw_audio, out_audio):
         "ffmpeg", "-y",
         "-i", raw_audio,
         "-filter_complex", 
-        "[0:a]asetrate=44100*1.042,atempo=0.960,volume=1.15[aout]",
+        "[0:a]asetrate=44100*1.035,atempo=0.966,volume=1.12[aout]",
         "-map", "[aout]", "-b:a", "192k", "-ar", "44100", out_audio
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return out_audio
 
-def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
-    s_str, a_str = f"{surah_num:03d}", f"{ayah_num:03d}"
+def download_ayah_audio_reliable(surah_num, ayah_num, reciter_info, out_file):
+    s_str = f"{surah_num:03d}"
+    a_str = f"{ayah_num:03d}"
     raw_tmp = f"raw_{s_str}_{a_str}.mp3"
+    
     urls = [
-        f"https://everyayah.com/data/{rec_id}/{s_str}{a_str}.mp3",
-        f"https://everyayah.com/data/Hudhaify_128kbps/{s_str}{a_str}.mp3",
+        f"https://cdn.islamic.network/quran/audio/128/{reciter_info['edition']}/{surah_num}_{ayah_num}.mp3",
+        f"https://everyayah.com/data/{reciter_info['everyayah']}/{s_str}{a_str}.mp3",
+        f"https://everyayah.com/data/Alafasy_128kbps/{s_str}{a_str}.mp3",
         f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{surah_num}_{ayah_num}.mp3"
     ]
+    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
     for u in urls:
-        try:
-            r = requests.get(u, timeout=20)
-            if r.status_code == 200 and len(r.content) > 3000 and not r.content.startswith(b"<!DOCTYPE"):
-                with open(raw_tmp, "wb") as f:
-                    f.write(r.content)
-                apply_anti_copyright(raw_tmp, out_file)
-                if os.path.exists(raw_tmp): 
-                    os.remove(raw_tmp)
-                return True
-        except Exception:
-            continue
+        for _ in range(2):
+            try:
+                r = requests.get(u, headers=headers, timeout=15)
+                if r.status_code == 200 and len(r.content) > 3000 and not r.content.startswith(b"<!DOCTYPE"):
+                    with open(raw_tmp, "wb") as f:
+                        f.write(r.content)
+                    apply_anti_copyright(raw_tmp, out_file)
+                    if os.path.exists(raw_tmp):
+                        os.remove(raw_tmp)
+                    return True
+            except Exception:
+                time.sleep(1)
+
     return False
 
 def render_quran_frame(words, active_idx, badge_text, font_b64):
@@ -297,11 +336,12 @@ def generate_cover_file(surah_name, sub_title, reciter_name, font_b64, out_cover
     return out_cover
 
 def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, reciter_info, tag):
-    rec_id = reciter_info["id"]
-    rec_name = reciter_info["name"]
     font_b64 = get_font_base64()
+    rec_name = reciter_info["name"]
 
     ayahs = []
+    print(f"📥 جلب آيات سورة {surah_name} ({start_a} إلى {end_a}) بصوت {rec_name}...", flush=True)
+
     for a in range(start_a, end_a + 1):
         try:
             t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=15).json()
@@ -310,14 +350,17 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
                 txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
             aud_file = f"aud_{tag}_{a}.mp3"
-            success = download_ayah_safe(surah_num, a, rec_id, aud_file)
+            success = download_ayah_audio_reliable(surah_num, a, reciter_info, aud_file)
             if success and os.path.exists(aud_file):
                 ayahs.append({"text": txt, "audio": aud_file})
-        except Exception:
+            else:
+                print(f"⚠️ تعذر تحميل صوت الآية {a}", flush=True)
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء جلب الآية {a}: {e}", flush=True)
             continue
 
     if not ayahs:
-        raise ValueError("فشل تحميل ملفات الصوت الخاصة بالآيات، جاري إعادة المحاولة...")
+        raise ValueError("فشل تحميل ملفات الصوت للآيات المحددة.")
 
     audio_clips, text_clips = [], []
     curr_t = 0.0
@@ -402,7 +445,7 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     return out_file, cover_file, rec_name
 
 def upload_files(video_file):
-    print("📤 جاري رفع ملف Shorts للحصول على رابط مباشر لـ Buffer...", flush=True)
+    print("📤 رفع ملف Shorts للحصول على رابط مباشر لـ Buffer...", flush=True)
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     if repo and gh_token:
@@ -491,36 +534,39 @@ def notify_telegram(message, cover_file=None):
 
 if __name__ == "__main__":
     now_utc = datetime.datetime.utcnow()
+    # الجمعة يوافق weekday == 4
     is_friday = (now_utc.weekday() == 4)
     reciter = random.choice(RECITERS_POOL)
+    history = load_history()
 
     if is_friday:
-        item = {
-            "surah": 18, 
-            "name": "الكهف", 
-            "start": 1, 
-            "end": 3, 
-            "badge": "نور ما بين الجمعتين 🌿", 
-            "key": f"friday_kahf_{now_utc.strftime('%Y_%U')}"
-        }
-        print("🌟 يوم الجمعة: إنتاج مقطع سورة الكهف (3 آيات)...", flush=True)
+        week_str = now_utc.strftime("%Y_%U")
+        item = get_friday_kahf_chunk(history, week_str)
+        print(f"🌟 يوم الجمعة المبارك: إنتاج سورة الكهف (جزء {item['part']}) - الآيات ({item['start']}-{item['end']})...", flush=True)
+        yt_title = f"سورة الكهف كاملة (جزء {item['part']}) الآيات ({item['start']}-{item['end']}) | نور الجمعة 🤍 #shorts"
+        caption = (
+            f"🕌 سورة الكهف - الجزء {item['part']}\n"
+            f"✨ الآيات الكريمة: ({item['start']} - {item['end']})\n"
+            f"🎙️ بصوت القارئ: {reciter['name']}\n\n"
+            f"قال ﷺ: (من قرأ سورة الكهف في يوم الجمعة أضاء له من النور ما بين الجمعتين) 🌿\n\n"
+            f"#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #قرآن #shorts #reels"
+        )
     else:
-        item = pick_unposted_clip_all_quran()
+        item = pick_unposted_clip_all_quran(history)
+        print(f"🎬 اختيار مقطع Shorts من القرآن: سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
+        yt_title = f"تلاوة خاشعة | سورة {item['name']} ({item['start']}-{item['end']}) 🤍 #shorts"
+        caption = (
+            f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
+            f"🎙️ بصوت القارئ: {reciter['name']}\n\n"
+            f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء أحزاننا 🤍\n\n"
+            f"#سورة_{item['name']} #قرآن #shorts #reels #تلاوة_خاشعة"
+        )
 
     tag = f"short_{item['key']}_{int(time.time())}"
-    print(f"🎬 اختيار مقطع Shorts من القرآن: سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
 
     vid_file, cov_file, r_name = build_fast_short_video(
         item["surah"], item["name"], item["start"], item["end"],
-        f"سورة {item['name']} • تلاوة خاشعة", reciter, tag
-    )
-
-    yt_title = f"تلاوة خاشعة | سورة {item['name']} ({item['start']}-{item['end']}) 🤍 #shorts"
-    caption = (
-        f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
-        f"🎙️ بصوت القارئ: {r_name}\n\n"
-        f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء أحزاننا 🤍\n\n"
-        f"#سورة_{item['name']} #قرآن #shorts #reels #تلاوة_خاشعة"
+        item["badge"], reciter, tag
     )
 
     pub_url = upload_files(vid_file)
@@ -529,11 +575,16 @@ if __name__ == "__main__":
     else:
         print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
 
-    save_history(item["key"])
+    if not is_friday:
+        if item["key"] not in history["posted_keys"]:
+            history["posted_keys"].append(item["key"])
+
+    save_history(history)
 
     report = (
-        f"✨ <b>تم إنتاج ونشر مقطع Shorts جديد (3 آيات فأكثر)!</b>\n\n"
-        f"📖 <b>السورة:</b> {item['name']} ({item['start']}-{item['end']})\n"
+        f"✨ <b>تم إنتاج ونشر مقطع Shorts جديد بنجاح!</b>\n\n"
+        f"📖 <b>السورة:</b> {item['name']} " + (f"(جزء {item['part']})" if item.get("part") else "") + f"\n"
+        f"🔢 <b>الآيات:</b> ({item['start']} إلى {item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
         f"⏱️ <b>النوع:</b> فيديو طولي 9:16 بكلمات مذهبة متحركة\n"
         f"🔒 <b>كود السجل:</b> <code>{item['key']}</code>\n"
