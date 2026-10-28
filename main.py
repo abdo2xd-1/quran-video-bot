@@ -444,7 +444,7 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     return out_file, cover_file, rec_name
 
 def upload_files(video_file):
-    print("📤 رفع ملف Shorts للحصول على رابط مباشر لـ Buffer...", flush=True)
+    print("📤 رفع ملف Shorts للحصول على رابط مباشر...", flush=True)
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     if repo and gh_token:
@@ -594,51 +594,21 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
 
     return None
 
-def post_to_odysee(video_file, title, description, tags=None):
+def post_to_odysee(remote_video_url, title, description, tags=None):
     if tags is None:
         tags = ["quran", "islam", "shorts", "reels"]
 
     auth_token = os.getenv("ODYSEE_AUTH_TOKEN", "").strip()
     channel_name = os.getenv("ODYSEE_CHANNEL_NAME", "").strip()
 
-    if not auth_token:
-        print("⚠️ بيانات Odysee غير مكتملة، تم التخطي.", flush=True)
+    if not auth_token or not remote_video_url:
+        print("⚠️ بيانات Odysee أو رابط الفيديو غير مكتمل، تم التخطي.", flush=True)
         return None
 
     try:
-        print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee...", flush=True)
-        file_name = os.path.basename(video_file)
-        file_size = os.path.getsize(video_file)
+        print("🚀 جاري نشر الفيديو مباشرة إلى منصة Odysee عبر Remote URL...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
 
-        # استخدام سيرفر الرفع المباشر لشبكة LBRY/Odysee
-        upload_endpoint = "https://upload.lbry.tv/upload"
-        meta_filename = base64.b64encode(file_name.encode()).decode()
-        meta_token = base64.b64encode(auth_token.encode()).decode()
-
-        init_headers = {
-            "Tus-Resumable": "1.0.0",
-            "Upload-Length": str(file_size),
-            "Upload-Metadata": f"filename {meta_filename},auth_token {meta_token}"
-        }
-
-        init_res = requests.post(upload_endpoint, headers=init_headers, timeout=30)
-        upload_location = init_res.headers.get("Location")
-
-        if not upload_location:
-            print(f"❌ تعذر بدء جلسة الرفع على Odysee: {init_res.status_code} - {init_res.text}", flush=True)
-            return None
-
-        # رفع بيانات الفيديو الفعلية
-        with open(video_file, "rb") as vf:
-            patch_headers = {
-                "Tus-Resumable": "1.0.0",
-                "Upload-Offset": "0",
-                "Content-Type": "application/offset+octet-stream"
-            }
-            requests.patch(upload_location, headers=patch_headers, data=vf, timeout=180)
-
-        uploaded_file_id = upload_location.split("/")[-1]
         payload = {
             "jsonrpc": "2.0",
             "method": "publish",
@@ -650,7 +620,7 @@ def post_to_odysee(video_file, title, description, tags=None):
                 "tags": tags,
                 "languages": ["ar"],
                 "bid": "0.0001",
-                "file_path": uploaded_file_id
+                "remote_url": remote_video_url
             },
             "id": int(time.time())
         }
@@ -661,7 +631,7 @@ def post_to_odysee(video_file, title, description, tags=None):
         pub_res = requests.post(
             "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
             json=payload,
-            timeout=40
+            timeout=60
         ).json()
 
         claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
@@ -729,18 +699,20 @@ if __name__ == "__main__":
         item["badge"], reciter, tag
     )
 
-    # 1. النشر على YouTube و Instagram عبر Buffer
+    # 1. تجهيز الرابط المباشر ورفع الملف
     pub_url = upload_files(vid_file)
+
+    # 2. النشر على YouTube و Instagram عبر Buffer
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
     else:
         print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
 
-    # 2. النشر التلقائي المباشر على Dailymotion
+    # 3. النشر التلقائي المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 3. النشر التلقائي المباشر على Odysee
-    odysee_link = post_to_odysee(vid_file, yt_title, caption)
+    # 4. النشر التلقائي المباشر على Odysee باستخدام الرابط السحابي
+    odysee_link = post_to_odysee(pub_url, yt_title, caption) if pub_url else None
 
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
@@ -748,7 +720,7 @@ if __name__ == "__main__":
 
     save_history(history)
 
-    # 4. إرسال تقرير تليجرام المجمع
+    # 5. إرسال تقرير تليجرام المجمع
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة على ديلي موشن</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة على أوديسي</a>" if odysee_link else ""
     report = (
