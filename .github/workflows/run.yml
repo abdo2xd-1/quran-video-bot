@@ -1,12 +1,9 @@
-on:
-  workflow_dispatch:
-  schedule:
-    # يعمل كل ساعة عند الدقيقة 23 بالضبط بدون طوابير انتظار
-    - cron: '23 * * * *'
+name: 4x Daily Quran Shorts Engine
 
-# صلاحيات لكتابة الكود والـ Releases
-permissions:
-  contents: write
+on:
+  workflow_dispatch: 
+  schedule:
+    - cron: '0 */6 * * *' 
 
 jobs:
   produce-and-save:
@@ -21,10 +18,10 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install System Dependencies (Chrome, FFmpeg, ImageMagick, Fonts)
+    - name: Install System Dependencies (Chrome, ImageMagick, Fonts)
       run: |
         sudo apt-get update
-        sudo apt-get install -y google-chrome-stable ffmpeg imagemagick fonts-hosny-amiri
+        sudo apt-get install -y google-chrome-stable imagemagick fonts-hosny-amiri
         sudo sed -i '/<policy domain="path" rights="none" pattern="@\*"/d' /etc/ImageMagick-*/policy.xml || true
 
     - name: Install Python Requirements
@@ -34,7 +31,6 @@ jobs:
 
     - name: Run Quran Engine
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
         BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
         FEBSPOT_EMAIL: ${{ secrets.FEBSPOT_EMAIL }}
@@ -46,8 +42,6 @@ jobs:
         ODYSEE_TOKEN: ${{ secrets.ODYSEE_TOKEN }}
         X_API_KEY: ${{ secrets.X_API_KEY }}
         X_API_SECRET: ${{ secrets.X_API_SECRET }}
-        X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-        X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
         CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
         CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
         CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
@@ -60,12 +54,3 @@ jobs:
         ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
       run: |
         python -u main.py
-
-    - name: Commit & Push History
-      if: always()
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add history.json surahs_meta.json || true
-        git commit -m "Auto-update history and meta cache [skip ci]" || echo "No changes to commit"
-        git push || true
