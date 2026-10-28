@@ -599,8 +599,6 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
         tags = ["quran", "islam", "shorts", "reels"]
 
     auth_token = os.getenv("ODYSEE_AUTH_TOKEN", "").strip()
-    channel_name = os.getenv("ODYSEE_CHANNEL_NAME", "").strip()
-
     if not auth_token or not remote_video_url:
         print("⚠️ بيانات Odysee أو رابط الفيديو غير مكتمل، تم التخطي.", flush=True)
         return None
@@ -608,14 +606,27 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
     try:
         print("🚀 جاري نشر الفيديو مباشرة إلى منصة Odysee عبر Remote URL...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
-
         headers = {
             "Content-Type": "application/json-rpc",
             "X-Lbry-Auth-Token": auth_token
         }
-        cookies = {
-            "auth_token": auth_token
-        }
+        api_url = f"https://api.na-backend.odysee.com/api/v1/proxy?m=publish&auth_token={auth_token}"
+
+        # فحص وجود قنوات معتمدة في الحساب واستخدام المعرف الخاص بها
+        channel_id = None
+        try:
+            ch_res = requests.post(
+                f"https://api.na-backend.odysee.com/api/v1/proxy?m=channel_list&auth_token={auth_token}",
+                headers=headers,
+                json={"jsonrpc": "2.0", "method": "channel_list", "params": {"auth_token": auth_token}, "id": 1},
+                timeout=15
+            ).json()
+            channels = ch_res.get("result", {}).get("items", [])
+            if channels:
+                channel_id = channels[0].get("claim_id")
+                print(f"📡 القناة المعتمدة: {channels[0].get('name')}", flush=True)
+        except Exception:
+            channel_id = None
 
         publish_params = {
             "auth_token": auth_token,
@@ -628,8 +639,8 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
             "remote_url": remote_video_url
         }
 
-        if channel_name:
-            publish_params["channel_name"] = channel_name
+        if channel_id:
+            publish_params["channel_id"] = channel_id
 
         payload = {
             "jsonrpc": "2.0",
@@ -638,15 +649,7 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
             "id": int(time.time())
         }
 
-        # تمرير التوكن في الـ URL و Headers والـ Body معاً لضمان قبوله
-        api_url = f"https://api.na-backend.odysee.com/api/v1/proxy?m=publish&auth_token={auth_token}"
-        pub_res = requests.post(
-            api_url,
-            headers=headers,
-            cookies=cookies,
-            json=payload,
-            timeout=60
-        ).json()
+        pub_res = requests.post(api_url, headers=headers, json=payload, timeout=60).json()
 
         claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
         claim_name = claim_info.get("name")
@@ -713,19 +716,19 @@ if __name__ == "__main__":
         item["badge"], reciter, tag
     )
 
-    # 1. تجهيز الرابط المباشر ورفع الملف
+    # 1. رفع المقطع وإنشاء الرابط المباشر
     pub_url = upload_files(vid_file)
 
-    # 2. النشر على YouTube و Instagram عبر Buffer
+    # 2. النشر على منصات Buffer (YouTube و Instagram)
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
     else:
         print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
 
-    # 3. النشر التلقائي المباشر على Dailymotion
+    # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 4. النشر التلقائي المباشر على Odysee باستخدام الرابط السحابي
+    # 4. النشر المباشر على Odysee
     odysee_link = post_to_odysee(pub_url, yt_title, caption) if pub_url else None
 
     if not is_friday:
@@ -734,7 +737,7 @@ if __name__ == "__main__":
 
     save_history(history)
 
-    # 5. إرسال تقرير تليجرام المجمع
+    # 5. إرسال التقرير النهائي إلى Telegram
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة على ديلي موشن</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة على أوديسي</a>" if odysee_link else ""
     report = (
