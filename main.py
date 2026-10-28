@@ -24,10 +24,10 @@ HISTORY_FILE = "history_shorts_all.json"
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
 RECITERS_POOL = [
-    {"edition": "ar.alafasy", "name": "مشاري العفاسي", "everyayah": "Alafasy_128kbps"},
-    {"edition": "ar.hudhaify", "name": "علي الحذيفي", "everyayah": "Hudhaify_128kbps"},
-    {"edition": "ar.shaatree", "name": "أبو بكر الشاطري", "everyayah": "Abu_Bakr_Ash-Shaatree_128kbps"},
-    {"edition": "ar.ayyoub", "name": "محمد أيوب", "everyayah": "Muhammad_Ayyoub_128kbps"}
+    {"name": "مشاري العفاسي", "server": "https://server8.mp3quran.net/afs"},
+    {"name": "علي الحذيفي", "server": "https://server9.mp3quran.net/hthfi"},
+    {"name": "أبو بكر الشاطري", "server": "https://server11.mp3quran.net/shatri"},
+    {"name": "محمد أيوب", "server": "https://server8.mp3quran.net/ayyub"}
 ]
 
 def load_history():
@@ -56,12 +56,10 @@ def get_all_114_surahs():
             json.dump(meta, f, ensure_ascii=False)
         return meta
     except Exception:
-        return [{"number": 1, "name": "الفاتحة", "ayahs": 7}, {"number": 18, "name": "الكهف", "ayahs": 110}, {"number": 67, "name": "الملك", "ayahs": 30}]
+        return [{"number": 1, "name": "الفاتحة", "ayahs": 7}, {"number": 18, "name": "الكهف", "ayahs": 110}, {"number": 105, "name": "الفيل", "ayahs": 5}]
 
 def get_friday_kahf_chunk(history, current_week_str):
-    """تقسيم سورة الكهف إلى أجزاء شورتس متتالية طوال ساعات يوم الجمعة"""
     k_prog = history.get("kahf_progress", {})
-    # إذا كانت جمعة جديدة نبدأ من الآية 1 والجزء 1
     if k_prog.get("week") != current_week_str:
         start_a = 1
         part_num = 1
@@ -69,15 +67,13 @@ def get_friday_kahf_chunk(history, current_week_str):
         start_a = k_prog.get("next_ayah", 1)
         part_num = k_prog.get("part", 1)
 
-    # إذا انتهت السورة (110 آيات) تعود من البداية
     if start_a > 110:
         start_a = 1
         part_num = 1
 
-    end_a = min(110, start_a + 2) # 3 آيات لكل فيديو شورتس
+    end_a = min(110, start_a + 2)
     clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
 
-    # تحديث التقدم للساعة القادمة
     history["kahf_progress"] = {
         "week": current_week_str,
         "next_ayah": end_a + 1,
@@ -100,7 +96,6 @@ def pick_unposted_clip_all_quran(history):
 
     for _ in range(300):
         surah = random.choice(surahs)
-        # استثناء سورة الكهف لبقية أيام الأسبوع لأنها مخصصة للجمعة
         if surah["number"] == 18:
             continue
             
@@ -155,41 +150,65 @@ def apply_anti_copyright(raw_audio, out_audio):
         "ffmpeg", "-y",
         "-i", raw_audio,
         "-filter_complex", 
-        "[0:a]asetrate=44100*1.035,atempo=0.966,volume=1.12[aout]",
+        "[0:a]asetrate=44100*1.035,atempo=0.966,volume=1.15[aout]",
         "-map", "[aout]", "-b:a", "192k", "-ar", "44100", out_audio
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return out_audio
 
-def download_ayah_audio_reliable(surah_num, ayah_num, reciter_info, out_file):
+def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     s_str = f"{surah_num:03d}"
-    a_str = f"{ayah_num:03d}"
-    raw_tmp = f"raw_{s_str}_{a_str}.mp3"
-    
-    urls = [
-        f"https://cdn.islamic.network/quran/audio/128/{reciter_info['edition']}/{surah_num}_{ayah_num}.mp3",
-        f"https://everyayah.com/data/{reciter_info['everyayah']}/{s_str}{a_str}.mp3",
-        f"https://everyayah.com/data/Alafasy_128kbps/{s_str}{a_str}.mp3",
-        f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{surah_num}_{ayah_num}.mp3"
-    ]
-    
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-    for u in urls:
-        for _ in range(2):
-            try:
-                r = requests.get(u, headers=headers, timeout=15)
-                if r.status_code == 200 and len(r.content) > 3000 and not r.content.startswith(b"<!DOCTYPE"):
-                    with open(raw_tmp, "wb") as f:
-                        f.write(r.content)
-                    apply_anti_copyright(raw_tmp, out_file)
-                    if os.path.exists(raw_tmp):
-                        os.remove(raw_tmp)
-                    return True
-            except Exception:
-                time.sleep(1)
+    # تحميل ملف السورة كاملاً من سيرفر mp3quran السريع والمفتوح
+    surah_full_url = f"{reciter_info['server']}/{s_str}.mp3"
+    raw_surah = f"raw_surah_{s_str}.mp3"
 
-    return False
+    print(f"📥 جاري جلب تلاوة السورة مباشرة من CDN بدون حظر...", flush=True)
+    res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
+    if res.status_code != 200:
+        # احتياطي إضافي من العفاسي
+        surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
+        res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
+
+    with open(raw_surah, "wb") as f:
+        for chunk in res.iter_content(chunk_size=16384):
+            f.write(chunk)
+
+    # جلب توقيت الآيات لقص الجزء المخصص
+    try:
+        t_url = f"https://api.quran.com/api/v4/recitations/7/by_ayah?surah_number={surah_num}"
+        timing_data = requests.get(t_url, headers=headers, timeout=15).json()
+        audio_files = timing_data.get("audio_files", [])
+        
+        start_ms = 0
+        end_ms = None
+        for item in audio_files:
+            verse_key = item.get("verse_key", "")
+            if verse_key == f"{surah_num}:{start_a}":
+                start_ms = item.get("segments", [[0, 0]])[0][2] if item.get("segments") else 0
+            if verse_key == f"{surah_num}:{end_a}":
+                segments = item.get("segments", [])
+                end_ms = segments[-1][3] if segments else None
+
+        start_sec = max(0, start_ms / 1000.0)
+        dur_sec = max(5.0, (end_ms / 1000.0) - start_sec) if end_ms else 45.0
+    except Exception:
+        start_sec = 0
+        dur_sec = 45.0
+
+    raw_segment = f"raw_segment_{s_str}.mp3"
+    # قص الآيات المطلوبة بدقة عبر FFmpeg
+    subprocess.run([
+        "ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur_sec), "-i", raw_surah,
+        "-c", "copy", raw_segment
+    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    apply_anti_copyright(raw_segment, out_file)
+
+    if os.path.exists(raw_surah): os.remove(raw_surah)
+    if os.path.exists(raw_segment): os.remove(raw_segment)
+    return True
 
 def render_quran_frame(words, active_idx, badge_text, font_b64):
     chrome_bin = get_chrome()
@@ -339,56 +358,43 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     font_b64 = get_font_base64()
     rec_name = reciter_info["name"]
 
-    ayahs = []
-    print(f"📥 جلب آيات سورة {surah_name} ({start_a} إلى {end_a}) بصوت {rec_name}...", flush=True)
+    # 1. تنزيل الصوت للمقطع المطلوب بدون تجزئة
+    aud_file = f"aud_seg_{tag}.mp3"
+    download_surah_segment(surah_num, start_a, end_a, reciter_info, aud_file)
+    audio_clip = AudioFileClip(aud_file)
 
+    if audio_clip.duration > 48.0:
+        audio_clip = audio_clip.subclip(0, 48.0)
+
+    # 2. جلب نصوص الآيات
+    full_text_list = []
     for a in range(start_a, end_a + 1):
         try:
-            t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=15).json()
+            t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=10).json()
             txt = clean_arabic(t_res.get("data", {}).get("text", ""))
             if a == 1 and surah_num != 1:
                 txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
-
-            aud_file = f"aud_{tag}_{a}.mp3"
-            success = download_ayah_audio_reliable(surah_num, a, reciter_info, aud_file)
-            if success and os.path.exists(aud_file):
-                ayahs.append({"text": txt, "audio": aud_file})
-            else:
-                print(f"⚠️ تعذر تحميل صوت الآية {a}", flush=True)
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء جلب الآية {a}: {e}", flush=True)
+            full_text_list.append(txt)
+        except Exception:
             continue
 
-    if not ayahs:
-        raise ValueError("فشل تحميل ملفات الصوت للآيات المحددة.")
+    combined_text = " ۝ ".join(full_text_list)
+    words = combined_text.split()
+    tot_chars = sum(len(w) for w in words) if words else 1
 
-    audio_clips, text_clips = [], []
-    curr_t = 0.0
-
-    for ay in ayahs:
-        ac = AudioFileClip(ay["audio"])
-        if curr_t + ac.duration > 48.0:
-            allowed_d = max(1.0, 48.0 - curr_t)
-            ac = ac.subclip(0, allowed_d)
-        
-        audio_clips.append(ac)
-        words = ay["text"].split()
-        tot_chars = sum(len(w) for w in words) if words else 1
-        w_start = curr_t
-        for idx, w in enumerate(words):
-            w_dur = (len(w) / tot_chars) * ac.duration
-            if w_start + w_dur > 48.5:
-                break
-            frame_img = render_quran_frame(words, idx, badge_label, font_b64)
-            text_clips.append(ImageClip(frame_img).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
-            w_start += w_dur
-        curr_t += ac.duration
-        if curr_t >= 48.0:
+    text_clips = []
+    w_start = 0.0
+    for idx, w in enumerate(words):
+        w_dur = (len(w) / tot_chars) * audio_clip.duration
+        if w_start + w_dur > 48.5:
             break
+        frame_img = render_quran_frame(words, idx, badge_label, font_b64)
+        text_clips.append(ImageClip(frame_img).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
+        w_start += w_dur
 
-    final_audio = concatenate_audioclips(audio_clips)
-    tot_dur = min(49.0, curr_t + 0.5)
+    tot_dur = audio_clip.duration + 0.3
 
+    # 3. خلفية عمودية
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"fast_bg_{tag}.mp4"
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
@@ -405,14 +411,13 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
         "-r", "24", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-an", fast_bg
     ]
     subprocess.run(scale_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if os.path.exists(raw_bg): 
-        os.remove(raw_bg)
+    if os.path.exists(raw_bg): os.remove(raw_bg)
 
     bg = VideoFileClip(fast_bg)
     bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur))
     dim = ColorClip(size=(1080, 1920), color=(10, 15, 20)).set_opacity(0.32).set_duration(tot_dur)
 
-    main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(final_audio).set_duration(tot_dur)
+    main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(audio_clip).set_duration(tot_dur)
 
     cover_file = f"cover_{tag}.jpg"
     generate_cover_file(surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
@@ -434,13 +439,9 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     except Exception:
         out_file = temp_joined
 
-    for ay in ayahs:
-        if os.path.exists(ay["audio"]): 
-            os.remove(ay["audio"])
-    if os.path.exists(fast_bg): 
-        os.remove(fast_bg)
-    if os.path.exists(temp_joined) and temp_joined != out_file: 
-        os.remove(temp_joined)
+    if os.path.exists(aud_file): os.remove(aud_file)
+    if os.path.exists(fast_bg): os.remove(fast_bg)
+    if os.path.exists(temp_joined) and temp_joined != out_file: os.remove(temp_joined)
 
     return out_file, cover_file, rec_name
 
@@ -534,7 +535,6 @@ def notify_telegram(message, cover_file=None):
 
 if __name__ == "__main__":
     now_utc = datetime.datetime.utcnow()
-    # الجمعة يوافق weekday == 4
     is_friday = (now_utc.weekday() == 4)
     reciter = random.choice(RECITERS_POOL)
     history = load_history()
