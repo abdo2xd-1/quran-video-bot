@@ -66,7 +66,7 @@ def pick_unposted_clip_all_quran():
     history = load_history()
     posted_keys = set(history.get("posted_keys", []))
 
-    for _ in range(250):
+    for _ in range(300):
         surah = random.choice(surahs)
         if surah["number"] == 18:
             continue
@@ -75,7 +75,8 @@ def pick_unposted_clip_all_quran():
         s_name = surah["name"]
         total_ayahs = surah["ayahs"]
 
-        chunk_size = 2 if total_ayahs > 4 else 1
+        # تحديد عدد الآيات: 3 آيات على الأقل، أو 4 إذا كانت السورة طويلة
+        chunk_size = 4 if total_ayahs >= 10 else (3 if total_ayahs >= 3 else total_ayahs)
         start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
         end_a = min(total_ayahs, start_a + chunk_size - 1)
 
@@ -93,8 +94,8 @@ def pick_unposted_clip_all_quran():
     history["posted_keys"] = []
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f)
-    s = random.choice(surahs)
-    return {"surah": s["number"], "name": s["name"], "start": 1, "end": min(2, s["ayahs"]), "key": f"{s['number']}_1_{int(time.time())}", "badge": f"سورة {s['name']} 🌿"}
+    s = random.choice([x for x in surahs if x["ayahs"] >= 3])
+    return {"surah": s["number"], "name": s["name"], "start": 1, "end": 3, "key": f"{s['number']}_1_3_{int(time.time())}", "badge": f"سورة {s['name']} 🌿"}
 
 def get_font_base64():
     font_path = "Amiri-Bold.ttf"
@@ -122,9 +123,8 @@ def apply_anti_copyright(raw_audio, out_audio):
     cmd = [
         "ffmpeg", "-y",
         "-i", raw_audio,
-        "-f", "lavfi", "-i", "anoisesrc=c=brown:a=0.010",
         "-filter_complex", 
-        "[0:a]asetrate=44100*1.042,atempo=0.960,aecho=0.8:0.85:280:0.3,volume=1.12[v_audio];[v_audio][1:a]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+        "[0:a]asetrate=44100*1.042,atempo=0.960,volume=1.15[aout]",
         "-map", "[aout]", "-b:a", "192k", "-ar", "44100", out_audio
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -135,12 +135,13 @@ def download_ayah_safe(surah_num, ayah_num, rec_id, out_file):
     raw_tmp = f"raw_{s_str}_{a_str}.mp3"
     urls = [
         f"https://everyayah.com/data/{rec_id}/{s_str}{a_str}.mp3",
-        f"https://everyayah.com/data/Hudhaify_128kbps/{s_str}{a_str}.mp3"
+        f"https://everyayah.com/data/Hudhaify_128kbps/{s_str}{a_str}.mp3",
+        f"https://cdn.islamic.network/quran/audio/128/ar.alafasy/{surah_num}_{ayah_num}.mp3"
     ]
     for u in urls:
         try:
             r = requests.get(u, timeout=20)
-            if r.status_code == 200 and len(r.content) > 4000 and not r.content.startswith(b"<!DOCTYPE"):
+            if r.status_code == 200 and len(r.content) > 3000 and not r.content.startswith(b"<!DOCTYPE"):
                 with open(raw_tmp, "wb") as f:
                     f.write(r.content)
                 apply_anti_copyright(raw_tmp, out_file)
@@ -161,7 +162,7 @@ def render_quran_frame(words, active_idx, badge_text, font_b64):
             words_html.append(f'<span style="color:#FFFFFF; text-shadow:0 0 10px rgba(0,0,0,0.95);">{w}</span>')
 
     full_verse = " ".join(words_html)
-    font_size = 68 if len(words) <= 7 else (52 if len(words) <= 14 else 42)
+    font_size = 64 if len(words) <= 8 else (48 if len(words) <= 16 else 38)
 
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
@@ -302,43 +303,48 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
 
     ayahs = []
     for a in range(start_a, end_a + 1):
-        t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=15).json()
-        txt = clean_arabic(t_res.get("data", {}).get("text", ""))
-        if a == 1 and surah_num != 1:
-            txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
+        try:
+            t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=15).json()
+            txt = clean_arabic(t_res.get("data", {}).get("text", ""))
+            if a == 1 and surah_num != 1:
+                txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
 
-        aud_file = f"aud_{tag}_{a}.mp3"
-        download_ayah_safe(surah_num, a, rec_id, aud_file)
-        ayahs.append({"text": txt, "audio": aud_file})
+            aud_file = f"aud_{tag}_{a}.mp3"
+            success = download_ayah_safe(surah_num, a, rec_id, aud_file)
+            if success and os.path.exists(aud_file):
+                ayahs.append({"text": txt, "audio": aud_file})
+        except Exception:
+            continue
+
+    if not ayahs:
+        raise ValueError("فشل تحميل ملفات الصوت الخاصة بالآيات، جاري إعادة المحاولة...")
 
     audio_clips, text_clips = [], []
     curr_t = 0.0
 
     for ay in ayahs:
-        if not os.path.exists(ay["audio"]):
-            continue
         ac = AudioFileClip(ay["audio"])
-        if curr_t + ac.duration > 45.0:
-            allowed_d = max(1.0, 45.0 - curr_t)
+        if curr_t + ac.duration > 48.0:
+            allowed_d = max(1.0, 48.0 - curr_t)
             ac = ac.subclip(0, allowed_d)
         
         audio_clips.append(ac)
         words = ay["text"].split()
-        tot_chars = sum(len(w) for w in words)
+        tot_chars = sum(len(w) for w in words) if words else 1
         w_start = curr_t
         for idx, w in enumerate(words):
             w_dur = (len(w) / tot_chars) * ac.duration
-            if w_start + w_dur > 46.0:
+            if w_start + w_dur > 48.5:
                 break
             frame_img = render_quran_frame(words, idx, badge_label, font_b64)
             text_clips.append(ImageClip(frame_img).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
             w_start += w_dur
         curr_t += ac.duration
-        if curr_t >= 45.0:
+        if curr_t >= 48.0:
             break
 
     final_audio = concatenate_audioclips(audio_clips)
-    tot_dur = min(48.0, curr_t + 0.5)
+    tot_dur = min(49.0, curr_t + 0.5)
 
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"fast_bg_{tag}.mp4"
@@ -493,11 +499,11 @@ if __name__ == "__main__":
             "surah": 18, 
             "name": "الكهف", 
             "start": 1, 
-            "end": 2, 
+            "end": 3, 
             "badge": "نور ما بين الجمعتين 🌿", 
             "key": f"friday_kahf_{now_utc.strftime('%Y_%U')}"
         }
-        print("🌟 يوم الجمعة: إنتاج مقطع سورة الكهف...", flush=True)
+        print("🌟 يوم الجمعة: إنتاج مقطع سورة الكهف (3 آيات)...", flush=True)
     else:
         item = pick_unposted_clip_all_quran()
 
@@ -526,7 +532,7 @@ if __name__ == "__main__":
     save_history(item["key"])
 
     report = (
-        f"✨ <b>تم إنتاج ونشر مقطع Shorts جديد من القرآن كاملاً!</b>\n\n"
+        f"✨ <b>تم إنتاج ونشر مقطع Shorts جديد (3 آيات فأكثر)!</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']} ({item['start']}-{item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
         f"⏱️ <b>النوع:</b> فيديو طولي 9:16 بكلمات مذهبة متحركة\n"
