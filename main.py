@@ -609,27 +609,41 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
         print("🚀 جاري نشر الفيديو مباشرة إلى منصة Odysee عبر Remote URL...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "publish",
-            "params": {
-                "auth_token": auth_token,
-                "name": clean_stream_name,
-                "title": title[:95],
-                "description": description,
-                "tags": tags,
-                "languages": ["ar"],
-                "bid": "0.0001",
-                "remote_url": remote_video_url
-            },
-            "id": int(time.time())
+        headers = {
+            "Content-Type": "application/json-rpc",
+            "X-Lbry-Auth-Token": auth_token
+        }
+        cookies = {
+            "auth_token": auth_token
+        }
+
+        publish_params = {
+            "auth_token": auth_token,
+            "name": clean_stream_name,
+            "title": title[:95],
+            "description": description,
+            "tags": tags,
+            "languages": ["ar"],
+            "bid": "0.0001",
+            "remote_url": remote_video_url
         }
 
         if channel_name:
-            payload["params"]["channel_name"] = channel_name
+            publish_params["channel_name"] = channel_name
 
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "publish",
+            "params": publish_params,
+            "id": int(time.time())
+        }
+
+        # تمرير التوكن في الـ URL و Headers والـ Body معاً لضمان قبوله
+        api_url = f"https://api.na-backend.odysee.com/api/v1/proxy?m=publish&auth_token={auth_token}"
         pub_res = requests.post(
-            "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
+            api_url,
+            headers=headers,
+            cookies=cookies,
             json=payload,
             timeout=60
         ).json()
