@@ -607,18 +607,16 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
         print("🚀 جاري نشر الفيديو مباشرة إلى منصة Odysee عبر Remote URL...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
         headers = {
-            "Content-Type": "application/json-rpc",
             "X-Lbry-Auth-Token": auth_token
         }
-        api_url = f"https://api.na-backend.odysee.com/api/v1/proxy?m=publish&auth_token={auth_token}"
 
-        # فحص وجود قنوات معتمدة في الحساب واستخدام المعرف الخاص بها
+        # 1. استخراج معرف القناة المعتمد
         channel_id = None
         try:
             ch_res = requests.post(
-                f"https://api.na-backend.odysee.com/api/v1/proxy?m=channel_list&auth_token={auth_token}",
-                headers=headers,
-                json={"jsonrpc": "2.0", "method": "channel_list", "params": {"auth_token": auth_token}, "id": 1},
+                "https://api.na-backend.odysee.com/api/v1/proxy?m=channel_list",
+                headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
+                json={"jsonrpc": "2.0", "method": "channel_list", "params": {}, "id": 1},
                 timeout=15
             ).json()
             channels = ch_res.get("result", {}).get("items", [])
@@ -628,28 +626,26 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
         except Exception:
             channel_id = None
 
-        publish_params = {
-            "auth_token": auth_token,
+        # 2. النشر عبر Form-Data لبوابة النشر الرسمية بدون تمرير auth_token في البيانات
+        publish_data = {
             "name": clean_stream_name,
             "title": title[:95],
             "description": description,
-            "tags": tags,
-            "languages": ["ar"],
+            "tags": json.dumps(tags),
+            "languages": json.dumps(["ar"]),
             "bid": "0.0001",
             "remote_url": remote_video_url
         }
 
         if channel_id:
-            publish_params["channel_id"] = channel_id
+            publish_data["channel_id"] = channel_id
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "publish",
-            "params": publish_params,
-            "id": int(time.time())
-        }
-
-        pub_res = requests.post(api_url, headers=headers, json=payload, timeout=60).json()
+        pub_res = requests.post(
+            "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
+            headers=headers,
+            data=publish_data,
+            timeout=60
+        ).json()
 
         claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
         claim_name = claim_info.get("name")
