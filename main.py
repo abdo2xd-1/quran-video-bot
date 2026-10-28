@@ -24,10 +24,10 @@ HISTORY_FILE = "history_shorts_all.json"
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
 RECITERS_POOL = [
-    {"edition": "ar.alafasy", "name": "مشاري العفاسي", "folder": "Alafasy_128kbps"},
-    {"edition": "ar.hudhaify", "name": "علي الحذيفي", "folder": "Hudhaify_128kbps"},
-    {"edition": "ar.shaatree", "name": "أبو بكر الشاطري", "folder": "Abu_Bakr_Ash-Shaatree_128kbps"},
-    {"edition": "ar.ayyoub", "name": "محمد أيوب", "folder": "Muhammad_Ayyoub_128kbps"}
+    {"name": "مشاري العفاسي", "server": "https://server8.mp3quran.net/afs"},
+    {"name": "علي الحذيفي", "server": "https://server9.mp3quran.net/hthfi"},
+    {"name": "أبو بكر الشاطري", "server": "https://server11.mp3quran.net/shatri"},
+    {"name": "محمد أيوب", "server": "https://server8.mp3quran.net/ayyub"}
 ]
 
 def load_history():
@@ -160,18 +160,10 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     s_str = f"{surah_num:03d}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-    # تحميل ملف السورة كاملاً من سيرفر mp3quran
-    surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
-    if reciter_info["name"] == "علي الحذيفي":
-        surah_full_url = f"https://server9.mp3quran.net/hthfi/{s_str}.mp3"
-    elif reciter_info["name"] == "أبو بكر الشاطري":
-        surah_full_url = f"https://server11.mp3quran.net/shatri/{s_str}.mp3"
-    elif reciter_info["name"] == "محمد أيوب":
-        surah_full_url = f"https://server8.mp3quran.net/ayyub/{s_str}.mp3"
-
+    surah_full_url = f"{reciter_info['server']}/{s_str}.mp3"
     raw_surah = f"raw_surah_{s_str}.mp3"
 
-    print(f"📥 جاري جلب تلاوة السورة مباشرة من CDN بدون حظر...", flush=True)
+    print("📥 جلب تلاوة السورة مباشرة من CDN...", flush=True)
     res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
     if res.status_code != 200:
         surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
@@ -181,7 +173,6 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
         for chunk in res.iter_content(chunk_size=16384):
             f.write(chunk)
 
-    # جلب توقيت الآيات لقص الجزء المخصص
     try:
         t_url = f"https://api.quran.com/api/v4/recitations/7/by_ayah?surah_number={surah_num}"
         timing_data = requests.get(t_url, headers=headers, timeout=15).json()
@@ -414,7 +405,8 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
         "-r", "24", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-an", fast_bg
     ]
     subprocess.run(scale_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if os.path.exists(raw_bg): os.remove(raw_bg)
+    if os.path.exists(raw_bg): 
+        os.remove(raw_bg)
 
     bg = VideoFileClip(fast_bg)
     bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur))
@@ -442,9 +434,12 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     except Exception:
         out_file = temp_joined
 
-    if os.path.exists(aud_file): os.remove(aud_file)
-    if os.path.exists(fast_bg): os.remove(fast_bg)
-    if os.path.exists(temp_joined) and temp_joined != out_file: os.remove(temp_joined)
+    if os.path.exists(aud_file): 
+        os.remove(aud_file)
+    if os.path.exists(fast_bg): 
+        os.remove(fast_bg)
+    if os.path.exists(temp_joined) and temp_joined != out_file: 
+        os.remove(temp_joined)
 
     return out_file, cover_file, rec_name
 
@@ -523,6 +518,82 @@ def post_to_buffer(video_url, yt_title, caption):
         except Exception as e:
             print(f"❌ خطأ أثناء الاتصال بـ Buffer: {e}", flush=True)
 
+def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts"):
+    api_key = os.getenv("DAILYMOTION_KEY", "").strip()
+    api_secret = os.getenv("DAILYMOTION_SECRET", "").strip()
+    username = os.getenv("DAILYMOTION_USERNAME", "").strip()
+    password = os.getenv("DAILYMOTION_PASSWORD", "").strip()
+
+    if not all([api_key, api_secret, username, password]):
+        print("⚠️ بيانات Dailymotion غير مكتملة، تم التخطي.", flush=True)
+        return None
+
+    try:
+        print("🚀 جاري تسجيل الدخول ورفع الفيديو على Dailymotion...", flush=True)
+        token_res = requests.post(
+            "https://api.dailymotion.com/oauth/token",
+            data={
+                "grant_type": "password",
+                "client_id": api_key,
+                "client_secret": api_secret,
+                "username": username,
+                "password": password,
+                "scope": "manage_videos"
+            },
+            timeout=30
+        ).json()
+
+        access_token = token_res.get("access_token")
+        if not access_token:
+            print(f"❌ فشل تسجيل الدخول إلى Dailymotion: {token_res}", flush=True)
+            return None
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        upload_url_res = requests.get(
+            "https://api.dailymotion.com/file/upload",
+            headers=headers,
+            timeout=20
+        ).json()
+        upload_url = upload_url_res.get("upload_url")
+
+        with open(video_file, "rb") as f:
+            up_res = requests.post(upload_url, files={"file": f}, timeout=180).json()
+        file_url = up_res.get("url")
+
+        if not file_url:
+            print("❌ فشل نقل ملف الفيديو لسيرفر Dailymotion.", flush=True)
+            return None
+
+        publish_data = {
+            "url": file_url,
+            "title": title[:250],
+            "description": description,
+            "tags": tags,
+            "channel": "lifestyle",
+            "published": "true",
+            "is_created_for_kids": "false"
+        }
+        create_res = requests.post(
+            "https://api.dailymotion.com/me/videos",
+            headers=headers,
+            data=publish_data,
+            timeout=30
+        ).json()
+
+        video_id = create_res.get("id")
+        if video_id:
+            dm_link = f"https://www.dailymotion.com/video/{video_id}"
+            print(f"✅ تم نشر الفيديو بنجاح على Dailymotion: {dm_link}", flush=True)
+            return dm_link
+        else:
+            print(f"❌ فشل نشر الفيديو في Dailymotion: {create_res}", flush=True)
+
+    except Exception as e:
+        print(f"⚠️ خطأ أثناء النشر على Dailymotion: {e}", flush=True)
+
+    return None
+
 def notify_telegram(message, cover_file=None):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("ADMIN_CHAT_ID", "").strip()
@@ -572,11 +643,15 @@ if __name__ == "__main__":
         item["badge"], reciter, tag
     )
 
+    # 1. النشر على YouTube و Instagram عبر Buffer
     pub_url = upload_files(vid_file)
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
     else:
         print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
+
+    # 2. النشر التلقائي المباشر على Dailymotion
+    dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
@@ -584,6 +659,8 @@ if __name__ == "__main__":
 
     save_history(history)
 
+    # 3. إرسال تقرير تليجرام
+    dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة على ديلي موشن</a>" if dm_link else ""
     report = (
         f"✨ <b>تم إنتاج ونشر مقطع Shorts جديد بنجاح!</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']} " + (f"(جزء {item['part']})" if item.get("part") else "") + f"\n"
@@ -592,6 +669,7 @@ if __name__ == "__main__":
         f"⏱️ <b>النوع:</b> فيديو طولي 9:16 بكلمات مذهبة متحركة\n"
         f"🔒 <b>كود السجل:</b> <code>{item['key']}</code>\n"
         f"🔗 <b>الرابط:</b> <a href='{pub_url}'>مشاهدة المقطع</a>"
+        f"{dm_report}"
     )
     notify_telegram(report, cov_file)
 
