@@ -24,10 +24,10 @@ HISTORY_FILE = "history_shorts_all.json"
 FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
 
 RECITERS_POOL = [
-    {"name": "مشاري العفاسي", "server": "https://server8.mp3quran.net/afs"},
-    {"name": "علي الحذيفي", "server": "https://server9.mp3quran.net/hthfi"},
-    {"name": "أبو بكر الشاطري", "server": "https://server11.mp3quran.net/shatri"},
-    {"name": "محمد أيوب", "server": "https://server8.mp3quran.net/ayyub"}
+    {"edition": "ar.alafasy", "name": "مشاري العفاسي", "folder": "Alafasy_128kbps"},
+    {"edition": "ar.hudhaify", "name": "علي الحذيفي", "folder": "Hudhaify_128kbps"},
+    {"edition": "ar.shaatree", "name": "أبو بكر الشاطري", "folder": "Abu_Bakr_Ash-Shaatree_128kbps"},
+    {"edition": "ar.ayyoub", "name": "محمد أيوب", "folder": "Muhammad_Ayyoub_128kbps"}
 ]
 
 def load_history():
@@ -160,14 +160,20 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     s_str = f"{surah_num:03d}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-    # تحميل ملف السورة كاملاً من سيرفر mp3quran السريع والمفتوح
-    surah_full_url = f"{reciter_info['server']}/{s_str}.mp3"
+    # تحميل ملف السورة كاملاً من سيرفر mp3quran
+    surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
+    if reciter_info["name"] == "علي الحذيفي":
+        surah_full_url = f"https://server9.mp3quran.net/hthfi/{s_str}.mp3"
+    elif reciter_info["name"] == "أبو بكر الشاطري":
+        surah_full_url = f"https://server11.mp3quran.net/shatri/{s_str}.mp3"
+    elif reciter_info["name"] == "محمد أيوب":
+        surah_full_url = f"https://server8.mp3quran.net/ayyub/{s_str}.mp3"
+
     raw_surah = f"raw_surah_{s_str}.mp3"
 
     print(f"📥 جاري جلب تلاوة السورة مباشرة من CDN بدون حظر...", flush=True)
     res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
     if res.status_code != 200:
-        # احتياطي إضافي من العفاسي
         surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
         res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
 
@@ -198,7 +204,6 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
         dur_sec = 45.0
 
     raw_segment = f"raw_segment_{s_str}.mp3"
-    # قص الآيات المطلوبة بدقة عبر FFmpeg
     subprocess.run([
         "ffmpeg", "-y", "-ss", str(start_sec), "-t", str(dur_sec), "-i", raw_surah,
         "-c", "copy", raw_segment
@@ -358,7 +363,6 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     font_b64 = get_font_base64()
     rec_name = reciter_info["name"]
 
-    # 1. تنزيل الصوت للمقطع المطلوب بدون تجزئة
     aud_file = f"aud_seg_{tag}.mp3"
     download_surah_segment(surah_num, start_a, end_a, reciter_info, aud_file)
     audio_clip = AudioFileClip(aud_file)
@@ -366,7 +370,6 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     if audio_clip.duration > 48.0:
         audio_clip = audio_clip.subclip(0, 48.0)
 
-    # 2. جلب نصوص الآيات
     full_text_list = []
     for a in range(start_a, end_a + 1):
         try:
@@ -392,9 +395,9 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
         text_clips.append(ImageClip(frame_img).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
         w_start += w_dur
 
-    tot_dur = audio_clip.duration + 0.3
+    tot_dur = audio_clip.duration
+    audio_clip = audio_clip.set_duration(tot_dur)
 
-    # 3. خلفية عمودية
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"fast_bg_{tag}.mp4"
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
