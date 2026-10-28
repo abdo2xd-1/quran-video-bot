@@ -594,28 +594,28 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
 
     return None
 
-def post_to_odysee(remote_video_url, title, description, tags=None):
+def post_to_odysee(video_file, title, description, tags=None):
     if tags is None:
         tags = ["quran", "islam", "shorts", "reels"]
 
     auth_token = os.getenv("ODYSEE_AUTH_TOKEN", "").strip()
-    if not auth_token or not remote_video_url:
-        print("⚠️ بيانات Odysee أو رابط الفيديو غير مكتمل، تم التخطي.", flush=True)
+    if not auth_token or not os.path.exists(video_file):
+        print("⚠️ بيانات Odysee أو ملف الفيديو غير موجود، تم التخطي.", flush=True)
         return None
 
     try:
-        print("🚀 جاري نشر الفيديو مباشرة إلى منصة Odysee عبر Remote URL...", flush=True)
+        print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee عبر File Stream...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
         headers = {
-            "Content-Type": "application/json-rpc",
             "X-Lbry-Auth-Token": auth_token
         }
 
+        # 1. استخراج معرف القناة المعتمد إن وجد
         channel_id = None
         try:
             ch_res = requests.post(
                 "https://api.na-backend.odysee.com/api/v1/proxy?m=channel_list",
-                headers=headers,
+                headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
                 json={"jsonrpc": "2.0", "method": "channel_list", "params": {}, "id": 1},
                 timeout=15
             ).json()
@@ -626,6 +626,44 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
         except Exception:
             channel_id = None
 
+        # 2. رفع الفيديو مباشرة كملف حقيقي عبر Tus Server الخاص بـ Odysee
+        file_size = os.path.getsize(video_file)
+        file_name = os.path.basename(video_file)
+
+        # استعلام خادم الرفع النشط
+        up_info = requests.post(
+            "https://api.na-backend.odysee.com/api/v1/proxy?m=file_upload",
+            headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
+            json={"jsonrpc": "2.0", "method": "file_upload", "params": {}, "id": 1},
+            timeout=20
+        ).json()
+        upload_server = up_info.get("result") or "https://backend.na-backend.odysee.com/api/v1/proxy"
+
+        meta_filename = base64.b64encode(file_name.encode()).decode()
+        meta_token = base64.b64encode(auth_token.encode()).decode()
+
+        tus_init_headers = {
+            "Tus-Resumable": "1.0.0",
+            "Upload-Length": str(file_size),
+            "Upload-Metadata": f"filename {meta_filename},auth_token {meta_token}"
+        }
+
+        init_res = requests.post(upload_server, headers=tus_init_headers, timeout=30)
+        upload_location = init_res.headers.get("Location")
+
+        if upload_location:
+            with open(video_file, "rb") as vf:
+                patch_headers = {
+                    "Tus-Resumable": "1.0.0",
+                    "Upload-Offset": "0",
+                    "Content-Type": "application/offset+octet-stream"
+                }
+                requests.patch(upload_location, headers=patch_headers, data=vf, timeout=180)
+            file_identifier = upload_location.split("/")[-1]
+        else:
+            file_identifier = file_name
+
+        # 3. تثبيت البث باستخدام معرّف الملف المرفوع
         publish_params = {
             "name": clean_stream_name,
             "title": title[:95],
@@ -633,7 +671,7 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
             "tags": tags,
             "languages": ["ar"],
             "bid": "0.0001",
-            "remote_url": remote_video_url
+            "file_path": file_identifier
         }
 
         if channel_id:
@@ -648,7 +686,7 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
 
         pub_res = requests.post(
             "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
-            headers=headers,
+            headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
             json=payload,
             timeout=60
         ).json()
@@ -730,8 +768,8 @@ if __name__ == "__main__":
     # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 4. النشر المباشر على Odysee
-    odysee_link = post_to_odysee(pub_url, yt_title, caption) if pub_url else None
+    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي
+    odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
