@@ -40,6 +40,10 @@ jobs:
         PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+        DAILYMOTION_KEY: ${{ secrets.DAILYMOTION_KEY }}
+        DAILYMOTION_SECRET: ${{ secrets.DAILYMOTION_SECRET }}
+        DAILYMOTION_USERNAME: ${{ secrets.DAILYMOTION_USERNAME }}
+        DAILYMOTION_PASSWORD: ${{ secrets.DAILYMOTION_PASSWORD }}
       run: |
         python -u main.py
 
