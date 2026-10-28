@@ -594,6 +594,84 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
 
     return None
 
+def post_to_odysee(video_file, title, description, tags=None):
+    if tags is None:
+        tags = ["quran", "islam", "shorts", "reels"]
+
+    auth_token = os.getenv("ODYSEE_AUTH_TOKEN", "").strip()
+    channel_name = os.getenv("ODYSEE_CHANNEL_NAME", "").strip()
+
+    if not auth_token:
+        print("⚠️ بيانات Odysee غير مكتملة، تم التخطي.", flush=True)
+        return None
+
+    try:
+        print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee...", flush=True)
+        file_size = os.path.getsize(video_file)
+        clean_stream_name = f"quran-short-{int(time.time())}"
+
+        upload_endpoint = "https://upload.odysee.com/upload"
+        meta_filename = base64.b64encode(os.path.basename(video_file).encode()).decode()
+        meta_token = base64.b64encode(auth_token.encode()).decode()
+
+        init_headers = {
+            "Tus-Resumable": "1.0.0",
+            "Upload-Length": str(file_size),
+            "Upload-Metadata": f"filename {meta_filename},auth_token {meta_token}"
+        }
+        
+        init_res = requests.post(upload_endpoint, headers=init_headers, timeout=30)
+        upload_location = init_res.headers.get("Location")
+
+        if not upload_location:
+            print(f"❌ تعذر استخراج رابط رفع Odysee: {init_res.status_code}", flush=True)
+            return None
+
+        with open(video_file, "rb") as vf:
+            patch_headers = {
+                "Tus-Resumable": "1.0.0",
+                "Upload-Offset": "0",
+                "Content-Type": "application/offset+octet-stream"
+            }
+            requests.patch(upload_location, headers=patch_headers, data=vf, timeout=180)
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "publish",
+            "params": {
+                "auth_token": auth_token,
+                "name": clean_stream_name,
+                "title": title[:95],
+                "description": description,
+                "tags": tags,
+                "languages": ["ar"],
+                "bid": "0.0001",
+                "file_path": upload_location.split("/")[-1]
+            },
+            "id": int(time.time())
+        }
+        
+        if channel_name:
+            payload["params"]["channel_name"] = channel_name
+
+        pub_res = requests.post("https://api.na-backend.odysee.com/api/v1/proxy", json=payload, timeout=40).json()
+
+        claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
+        claim_name = claim_info.get("name")
+        claim_id = claim_info.get("claim_id")
+
+        if claim_name and claim_id:
+            odysee_url = f"https://odysee.com/{claim_name}:{claim_id}"
+            print(f"✅ تم النشر بنجاح على Odysee: {odysee_url}", flush=True)
+            return odysee_url
+        else:
+            print(f"❌ رد النشر من Odysee: {pub_res}", flush=True)
+
+    except Exception as e:
+        print(f"⚠️ استثناء أثناء النشر على Odysee: {e}", flush=True)
+
+    return None
+
 def notify_telegram(message, cover_file=None):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("ADMIN_CHAT_ID", "").strip()
@@ -653,14 +731,18 @@ if __name__ == "__main__":
     # 2. النشر التلقائي المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
+    # 3. النشر التلقائي المباشر على Odysee
+    odysee_link = post_to_odysee(vid_file, yt_title, caption)
+
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
             history["posted_keys"].append(item["key"])
 
     save_history(history)
 
-    # 3. إرسال تقرير تليجرام
+    # 4. إرسال تقرير تليجرام المجمع
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة على ديلي موشن</a>" if dm_link else ""
+    odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة على أوديسي</a>" if odysee_link else ""
     report = (
         f"✨ <b>تم إنتاج ونشر مقطع Shorts جديد بنجاح!</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']} " + (f"(جزء {item['part']})" if item.get("part") else "") + f"\n"
@@ -668,8 +750,9 @@ if __name__ == "__main__":
         f"🎙️ <b>القارئ:</b> {r_name}\n"
         f"⏱️ <b>النوع:</b> فيديو طولي 9:16 بكلمات مذهبة متحركة\n"
         f"🔒 <b>كود السجل:</b> <code>{item['key']}</code>\n"
-        f"🔗 <b>الرابط:</b> <a href='{pub_url}'>مشاهدة المقطع</a>"
+        f"🔗 <b>الرابط الأصلي:</b> <a href='{pub_url}'>تحميل المقطع</a>"
         f"{dm_report}"
+        f"{odysee_report}"
     )
     notify_telegram(report, cov_file)
 
