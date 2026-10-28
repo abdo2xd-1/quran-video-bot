@@ -611,21 +611,8 @@ def post_to_odysee(video_file, title, description, tags=None):
         file_size = os.path.getsize(video_file)
         clean_stream_name = f"quran-short-{int(time.time())}"
 
-        server_res = requests.post(
-            "https://api.na-backend.odysee.com/api/v1/proxy?m=file_upload",
-            json={
-                "jsonrpc": "2.0",
-                "method": "file_upload",
-                "params": {"auth_token": auth_token},
-                "id": int(time.time())
-            },
-            timeout=30
-        ).json()
-
-        upload_endpoint = server_res.get("result")
-        if not upload_endpoint:
-            upload_endpoint = "https://backend.odysee.com/api/v1/proxy"
-
+        # استخدام سيرفر الرفع المباشر لشبكة LBRY/Odysee
+        upload_endpoint = "https://upload.lbry.tv/upload"
         meta_filename = base64.b64encode(file_name.encode()).decode()
         meta_token = base64.b64encode(auth_token.encode()).decode()
 
@@ -639,9 +626,10 @@ def post_to_odysee(video_file, title, description, tags=None):
         upload_location = init_res.headers.get("Location")
 
         if not upload_location:
-            print(f"❌ تعذر بدء جلسة الرفع على Odysee: {init_res.status_code}", flush=True)
+            print(f"❌ تعذر بدء جلسة الرفع على Odysee: {init_res.status_code} - {init_res.text}", flush=True)
             return None
 
+        # رفع بيانات الفيديو الفعلية
         with open(video_file, "rb") as vf:
             patch_headers = {
                 "Tus-Resumable": "1.0.0",
