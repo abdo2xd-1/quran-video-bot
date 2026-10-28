@@ -604,13 +604,13 @@ def post_to_odysee(video_file, title, description, tags=None):
         return None
 
     try:
-        print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee عبر File Stream...", flush=True)
+        print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee عبر Form Upload...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
         headers = {
             "X-Lbry-Auth-Token": auth_token
         }
 
-        # 1. استخراج معرف القناة المعتمد إن وجد
+        # 1. استخراج معرف القناة المعتمد
         channel_id = None
         try:
             ch_res = requests.post(
@@ -626,70 +626,30 @@ def post_to_odysee(video_file, title, description, tags=None):
         except Exception:
             channel_id = None
 
-        # 2. رفع الفيديو مباشرة كملف حقيقي عبر Tus Server الخاص بـ Odysee
-        file_size = os.path.getsize(video_file)
-        file_name = os.path.basename(video_file)
-
-        # استعلام خادم الرفع النشط
-        up_info = requests.post(
-            "https://api.na-backend.odysee.com/api/v1/proxy?m=file_upload",
-            headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
-            json={"jsonrpc": "2.0", "method": "file_upload", "params": {}, "id": 1},
-            timeout=20
-        ).json()
-        upload_server = up_info.get("result") or "https://backend.na-backend.odysee.com/api/v1/proxy"
-
-        meta_filename = base64.b64encode(file_name.encode()).decode()
-        meta_token = base64.b64encode(auth_token.encode()).decode()
-
-        tus_init_headers = {
-            "Tus-Resumable": "1.0.0",
-            "Upload-Length": str(file_size),
-            "Upload-Metadata": f"filename {meta_filename},auth_token {meta_token}"
-        }
-
-        init_res = requests.post(upload_server, headers=tus_init_headers, timeout=30)
-        upload_location = init_res.headers.get("Location")
-
-        if upload_location:
-            with open(video_file, "rb") as vf:
-                patch_headers = {
-                    "Tus-Resumable": "1.0.0",
-                    "Upload-Offset": "0",
-                    "Content-Type": "application/offset+octet-stream"
-                }
-                requests.patch(upload_location, headers=patch_headers, data=vf, timeout=180)
-            file_identifier = upload_location.split("/")[-1]
-        else:
-            file_identifier = file_name
-
-        # 3. تثبيت البث باستخدام معرّف الملف المرفوع
-        publish_params = {
+        # 2. تجهيز بيانات النشر ورفع الملف مباشرة في نفس الطلب
+        publish_data = {
             "name": clean_stream_name,
             "title": title[:95],
             "description": description,
-            "tags": tags,
-            "languages": ["ar"],
-            "bid": "0.0001",
-            "file_path": file_identifier
+            "tags": json.dumps(tags),
+            "languages": json.dumps(["ar"]),
+            "bid": "0.0001"
         }
 
         if channel_id:
-            publish_params["channel_id"] = channel_id
+            publish_data["channel_id"] = channel_id
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "publish",
-            "params": publish_params,
-            "id": int(time.time())
-        }
-
-        pub_res = requests.post(
-            "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
-            headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
-            json=payload,
-            timeout=60
-        ).json()
+        with open(video_file, "rb") as vf:
+            files = {
+                "file": (os.path.basename(video_file), vf, "video/mp4")
+            }
+            pub_res = requests.post(
+                "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
+                headers=headers,
+                data=publish_data,
+                files=files,
+                timeout=180
+            ).json()
 
         claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
         claim_name = claim_info.get("name")
@@ -768,7 +728,7 @@ if __name__ == "__main__":
     # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي
+    # 4. النشر المباشر على Odysee بملف الفيديو
     odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
     if not is_friday:
