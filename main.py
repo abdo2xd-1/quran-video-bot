@@ -606,9 +606,6 @@ def post_to_odysee(video_file, title, description, tags=None):
     try:
         print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee عبر Form Upload...", flush=True)
         clean_stream_name = f"quran-short-{int(time.time())}"
-        headers = {
-            "X-Lbry-Auth-Token": auth_token
-        }
 
         # 1. استخراج معرف القناة المعتمد
         channel_id = None
@@ -626,28 +623,32 @@ def post_to_odysee(video_file, title, description, tags=None):
         except Exception:
             channel_id = None
 
-        # 2. تجهيز بيانات النشر ورفع الملف مباشرة في نفس الطلب
-        publish_data = {
+        # 2. إعداد بنية JSON-RPC القياسية
+        publish_params = {
             "name": clean_stream_name,
             "title": title[:95],
             "description": description,
-            "tags": json.dumps(tags),
-            "languages": json.dumps(["ar"]),
+            "tags": tags,
+            "languages": ["ar"],
             "bid": "0.0001"
         }
-
         if channel_id:
-            publish_data["channel_id"] = channel_id
+            publish_params["channel_id"] = channel_id
 
+        json_payload = {
+            "jsonrpc": "2.0",
+            "method": "publish",
+            "params": publish_params,
+            "id": int(time.time())
+        }
+
+        # 3. الرفع عبر خادم النشر المعتمد الذي يقبل Multipart
         with open(video_file, "rb") as vf:
-            files = {
-                "file": (os.path.basename(video_file), vf, "video/mp4")
-            }
             pub_res = requests.post(
-                "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
-                headers=headers,
-                data=publish_data,
-                files=files,
+                "https://publish.odysee.com/api/v1/proxy?m=publish",
+                headers={"X-Lbry-Auth-Token": auth_token},
+                data={"json_payload": json.dumps(json_payload)},
+                files={"file": (os.path.basename(video_file), vf, "video/mp4")},
                 timeout=180
             ).json()
 
