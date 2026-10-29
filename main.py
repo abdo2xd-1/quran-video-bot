@@ -594,41 +594,74 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
 
     return None
 
-def post_to_odysee(remote_video_url, title, description, tags=None):
+def post_to_odysee(video_file, title, description, tags=None):
     if tags is None:
         tags = ["quran", "islam", "shorts", "reels"]
 
     auth_token = os.getenv("ODYSEE_AUTH_TOKEN", "").strip()
-    if not auth_token or not remote_video_url:
-        print("⚠️ بيانات Odysee أو رابط الفيديو غير مكتمل، تم التخطي.", flush=True)
+    if not auth_token or not os.path.exists(video_file):
+        print("⚠️ بيانات Odysee أو ملف الفيديو غير موجود، تم التخطي.", flush=True)
         return None
 
     try:
-        print("🚀 جاري نشر الفيديو على Odysee عبر السحب السحابي المباشر...", flush=True)
+        print("🚀 جاري بدء رفع الفيديو إلى Odysee عبر بروتوكول TUS المعتمد...", flush=True)
         headers = {
             "Content-Type": "application/json-rpc",
             "X-Lbry-Auth-Token": auth_token
         }
 
-        # 1. جلب المعرف الفعلي للقناة الظاهرة في حسابك
-        channel_id = None
-        try:
-            ch_res = requests.post(
-                "https://api.na-backend.odysee.com/api/v1/proxy?m=channel_list",
-                headers=headers,
-                json={"jsonrpc": "2.0", "method": "channel_list", "params": {}, "id": 1},
-                timeout=15
-            ).json()
-            channels = ch_res.get("result", {}).get("items", [])
-            if channels:
-                channel_id = channels[0].get("claim_id")
-                print(f"📡 القناة المعتمدة: {channels[0].get('name')} (Claim ID: {channel_id})", flush=True)
-        except Exception:
-            channel_id = None
+        # 1. القناة المعتمدة: نستخدم claim_id المكتشف مسبقاً لحسابك
+        channel_id = "d2a1e5238cbfc0b0a210a7f7d1d815c5f075d9a4"
+        print(f"📡 القناة المعتمدة: @qran (Claim ID: {channel_id})", flush=True)
 
+        file_size = os.path.getsize(video_file)
+        file_name = os.path.basename(video_file)
         clean_stream_name = f"quran-short-{int(time.time())}"
 
-        # 2. استخدام المعامل المعتمد في LBRY Daemon لسحب الملفات عن بعد
+        # 2. إنشاء الجلسة ورفع الفيديو إلى خادم التخزين السحابي لـ Odysee
+        tus_endpoint = "https://upload-v1.lbry.tv/upload"
+        meta_fn = base64.b64encode(file_name.encode()).decode()
+        meta_tk = base64.b64encode(auth_token.encode()).decode()
+
+        init_res = requests.post(
+            tus_endpoint,
+            headers={
+                "Tus-Resumable": "1.0.0",
+                "Upload-Length": str(file_size),
+                "Upload-Metadata": f"filename {meta_fn},auth_token {meta_tk}"
+            },
+            timeout=30
+        )
+
+        upload_location = init_res.headers.get("Location")
+        if not upload_location:
+            print(f"❌ تعذر فتح مسار الرفع من خادم TUS (Status: {init_res.status_code})", flush=True)
+            return None
+
+        if upload_location.startswith("/"):
+            upload_location = f"https://upload-v1.lbry.tv{upload_location}"
+
+        print("📦 جاري نقل حزم الفيديو إلى خوادم Odysee...", flush=True)
+        with open(video_file, "rb") as vf:
+            patch_res = requests.patch(
+                upload_location,
+                headers={
+                    "Tus-Resumable": "1.0.0",
+                    "Upload-Offset": "0",
+                    "Content-Type": "application/offset+octet-stream"
+                },
+                data=vf,
+                timeout=300
+            )
+
+        if patch_res.status_code not in [200, 204]:
+            print(f"❌ فشل نقل أجزاء الفيديو (Status: {patch_res.status_code})", flush=True)
+            return None
+
+        file_id = upload_location.rstrip("/").split("/")[-1]
+        print(f"✅ تم الرفع للسيرفر بنجاح، المعرف السحابي: {file_id}", flush=True)
+
+        # 3. تثبيت البث الرسمي على القناة باستخدام المعرف السحابي
         publish_params = {
             "name": clean_stream_name,
             "title": title[:95],
@@ -636,13 +669,9 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
             "tags": tags,
             "languages": ["ar"],
             "bid": "0.0001",
-            "file_url": remote_video_url
+            "file_path": file_id,
+            "channel_id": channel_id
         }
-
-        if channel_id:
-            publish_params["channel_id"] = channel_id
-        else:
-            publish_params["channel_name"] = "@qran:d"
 
         payload = {
             "jsonrpc": "2.0",
@@ -660,10 +689,10 @@ def post_to_odysee(remote_video_url, title, description, tags=None):
 
         claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
         claim_name = claim_info.get("name")
-        claim_id = claim_info.get("claim_id")
+        res_claim_id = claim_info.get("claim_id")
 
-        if claim_name and claim_id:
-            odysee_url = f"https://odysee.com/{claim_name}:{claim_id}"
+        if claim_name and res_claim_id:
+            odysee_url = f"https://odysee.com/{claim_name}:{res_claim_id}"
             print(f"✅ تم النشر بنجاح على Odysee: {odysee_url}", flush=True)
             return odysee_url
         else:
@@ -735,8 +764,8 @@ if __name__ == "__main__":
     # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 4. النشر المباشر على Odysee عبر الرابط السحابي المباشر
-    odysee_link = post_to_odysee(pub_url, yt_title, caption) if pub_url else None
+    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي عبر TUS
+    odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
