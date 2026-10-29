@@ -444,7 +444,7 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     return out_file, cover_file, rec_name
 
 def upload_files(video_file):
-    print("📤 رفع ملف Shorts للحصول على رابط مباشر...", flush=True)
+    print("📤 رفع ملف Shorts للحصول على رابط مباشر لـ Buffer...", flush=True)
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     if repo and gh_token:
@@ -604,15 +604,18 @@ def post_to_odysee(video_file, title, description, tags=None):
         return None
 
     try:
-        print("🚀 جاري رفع الفيديو مباشرة إلى منصة Odysee عبر Form Upload...", flush=True)
-        clean_stream_name = f"quran-short-{int(time.time())}"
+        print("🚀 جاري التواصل مع خوادم Odysee الرسمية...", flush=True)
+        headers = {
+            "Content-Type": "application/json-rpc",
+            "X-Lbry-Auth-Token": auth_token
+        }
 
-        # 1. استخراج معرف القناة المعتمد
+        # 1. جلب معرف القناة المعتمد
         channel_id = None
         try:
             ch_res = requests.post(
                 "https://api.na-backend.odysee.com/api/v1/proxy?m=channel_list",
-                headers={"Content-Type": "application/json-rpc", "X-Lbry-Auth-Token": auth_token},
+                headers=headers,
                 json={"jsonrpc": "2.0", "method": "channel_list", "params": {}, "id": 1},
                 timeout=15
             ).json()
@@ -623,34 +626,80 @@ def post_to_odysee(video_file, title, description, tags=None):
         except Exception:
             channel_id = None
 
-        # 2. إعداد بنية JSON-RPC القياسية
+        # 2. الحصول على رابط الرفع المؤكد من الخادم الداخلي
+        server_res = requests.post(
+            "https://api.na-backend.odysee.com/api/v1/proxy?m=file_upload",
+            headers=headers,
+            json={"jsonrpc": "2.0", "method": "file_upload", "params": {}, "id": 1},
+            timeout=20
+        ).json()
+        
+        upload_url = server_res.get("result")
+        file_size = os.path.getsize(video_file)
+        file_name = os.path.basename(video_file)
+        clean_stream_name = f"quran-short-{int(time.time())}"
+
+        # 3. محاولة الرفع عبر سيرفر Odysee إذا توفر الرابط
+        uploaded_id = None
+        if upload_url:
+            try:
+                meta_fn = base64.b64encode(file_name.encode()).decode()
+                meta_tk = base64.b64encode(auth_token.encode()).decode()
+                init_res = requests.post(
+                    upload_url,
+                    headers={
+                        "Tus-Resumable": "1.0.0",
+                        "Upload-Length": str(file_size),
+                        "Upload-Metadata": f"filename {meta_fn},auth_token {meta_tk}"
+                    },
+                    timeout=30
+                )
+                loc = init_res.headers.get("Location")
+                if loc:
+                    with open(video_file, "rb") as vf:
+                        requests.patch(
+                            loc,
+                            headers={
+                                "Tus-Resumable": "1.0.0",
+                                "Upload-Offset": "0",
+                                "Content-Type": "application/offset+octet-stream"
+                            },
+                            data=vf,
+                            timeout=180
+                        )
+                    uploaded_id = loc.split("/")[-1]
+            except Exception as e:
+                print(f"⚠️ تعذر إتمام رفع TUS: {e}", flush=True)
+
+        if not uploaded_id:
+            uploaded_id = file_name
+
+        # 4. نشر الفيديو بدون إضافة بارامترات مرفوضة
         publish_params = {
             "name": clean_stream_name,
             "title": title[:95],
             "description": description,
             "tags": tags,
             "languages": ["ar"],
-            "bid": "0.0001"
+            "bid": "0.0001",
+            "file_path": uploaded_id
         }
         if channel_id:
             publish_params["channel_id"] = channel_id
 
-        json_payload = {
+        payload = {
             "jsonrpc": "2.0",
             "method": "publish",
             "params": publish_params,
             "id": int(time.time())
         }
 
-        # 3. الرفع عبر خادم النشر المعتمد الذي يقبل Multipart
-        with open(video_file, "rb") as vf:
-            pub_res = requests.post(
-                "https://publish.odysee.com/api/v1/proxy?m=publish",
-                headers={"X-Lbry-Auth-Token": auth_token},
-                data={"json_payload": json.dumps(json_payload)},
-                files={"file": (os.path.basename(video_file), vf, "video/mp4")},
-                timeout=180
-            ).json()
+        pub_res = requests.post(
+            "https://api.na-backend.odysee.com/api/v1/proxy?m=publish",
+            headers=headers,
+            json=payload,
+            timeout=60
+        ).json()
 
         claim_info = pub_res.get("result", {}).get("outputs", [{}])[0]
         claim_name = claim_info.get("name")
@@ -661,10 +710,10 @@ def post_to_odysee(video_file, title, description, tags=None):
             print(f"✅ تم النشر بنجاح على Odysee: {odysee_url}", flush=True)
             return odysee_url
         else:
-            print(f"❌ رد النشر من Odysee: {pub_res}", flush=True)
+            print(f"ℹ️ نتيجة Odysee: {pub_res}", flush=True)
 
     except Exception as e:
-        print(f"⚠️ استثناء أثناء النشر على Odysee: {e}", flush=True)
+        print(f"⚠️ استثناء في Odysee: {e}", flush=True)
 
     return None
 
@@ -717,7 +766,7 @@ if __name__ == "__main__":
         item["badge"], reciter, tag
     )
 
-    # 1. رفع المقطع وإنشاء الرابط المباشر
+    # 1. رفع المقطع للحصول على الرابط المباشر
     pub_url = upload_files(vid_file)
 
     # 2. النشر على منصات Buffer (YouTube و Instagram)
@@ -729,7 +778,7 @@ if __name__ == "__main__":
     # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 4. النشر المباشر على Odysee بملف الفيديو
+    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي
     odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
     if not is_friday:
