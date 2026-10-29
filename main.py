@@ -604,7 +604,7 @@ def post_to_odysee(video_file, title, description, tags=None):
         return None
 
     try:
-        print("🚀 جاري التواصل مع خوادم Odysee الرسمية...", flush=True)
+        print("🚀 جاري بدء جلسة الرفع الرسمية إلى Odysee عبر TUS Upload...", flush=True)
         headers = {
             "Content-Type": "application/json-rpc",
             "X-Lbry-Auth-Token": auth_token
@@ -626,55 +626,71 @@ def post_to_odysee(video_file, title, description, tags=None):
         except Exception:
             channel_id = None
 
-        # 2. الحصول على رابط الرفع المؤكد من الخادم الداخلي
-        server_res = requests.post(
+        # 2. طلب خادم الرفع الفعلي النشط
+        up_info = requests.post(
             "https://api.na-backend.odysee.com/api/v1/proxy?m=file_upload",
             headers=headers,
             json={"jsonrpc": "2.0", "method": "file_upload", "params": {}, "id": 1},
             timeout=20
         ).json()
-        
-        upload_url = server_res.get("result")
+        upload_endpoint = up_info.get("result")
+        print(f"📍 سيرفر الرفع النشط: {upload_endpoint}", flush=True)
+
+        if not upload_endpoint:
+            print("❌ لم يتم استرجاع خادم الرفع من Odysee.", flush=True)
+            return None
+
         file_size = os.path.getsize(video_file)
         file_name = os.path.basename(video_file)
         clean_stream_name = f"quran-short-{int(time.time())}"
 
-        # 3. محاولة الرفع عبر سيرفر Odysee إذا توفر الرابط
-        uploaded_id = None
-        if upload_url:
-            try:
-                meta_fn = base64.b64encode(file_name.encode()).decode()
-                meta_tk = base64.b64encode(auth_token.encode()).decode()
-                init_res = requests.post(
-                    upload_url,
-                    headers={
-                        "Tus-Resumable": "1.0.0",
-                        "Upload-Length": str(file_size),
-                        "Upload-Metadata": f"filename {meta_fn},auth_token {meta_tk}"
-                    },
-                    timeout=30
-                )
-                loc = init_res.headers.get("Location")
-                if loc:
-                    with open(video_file, "rb") as vf:
-                        requests.patch(
-                            loc,
-                            headers={
-                                "Tus-Resumable": "1.0.0",
-                                "Upload-Offset": "0",
-                                "Content-Type": "application/offset+octet-stream"
-                            },
-                            data=vf,
-                            timeout=180
-                        )
-                    uploaded_id = loc.split("/")[-1]
-            except Exception as e:
-                print(f"⚠️ تعذر إتمام رفع TUS: {e}", flush=True)
+        meta_fn = base64.b64encode(file_name.encode()).decode()
+        meta_tk = base64.b64encode(auth_token.encode()).decode()
 
-        if not uploaded_id:
-            uploaded_id = file_name
+        # 3. إنشاء جلسة الرفع واستلام الـ Location
+        init_res = requests.post(
+            upload_endpoint,
+            headers={
+                "Tus-Resumable": "1.0.0",
+                "Upload-Length": str(file_size),
+                "Upload-Metadata": f"filename {meta_fn},auth_token {meta_tk}"
+            },
+            timeout=30
+        )
 
-        # 4. نشر الفيديو بدون إضافة بارامترات مرفوضة
+        upload_location = init_res.headers.get("Location")
+        if not upload_location:
+            print(f"❌ تعذر فتح مسار الرفع (Status: {init_res.status_code}, Body: {init_res.text})", flush=True)
+            return None
+
+        # إذا كان الرابط نسبياً نضيف له النطاق
+        if upload_location.startswith("/"):
+            from urllib.parse import urlparse
+            parsed = urlparse(upload_endpoint)
+            upload_location = f"{parsed.scheme}://{parsed.netloc}{upload_location}"
+
+        # 4. إرسال أجزاء الفيديو
+        print("📦 جاري نقل حزم الفيديو...", flush=True)
+        with open(video_file, "rb") as vf:
+            patch_res = requests.patch(
+                upload_location,
+                headers={
+                    "Tus-Resumable": "1.0.0",
+                    "Upload-Offset": "0",
+                    "Content-Type": "application/offset+octet-stream"
+                },
+                data=vf,
+                timeout=240
+            )
+
+        if patch_res.status_code not in [200, 204]:
+            print(f"❌ فشل نقل بايتات الفيديو (Status: {patch_res.status_code})", flush=True)
+            return None
+
+        file_id = upload_location.rstrip("/").split("/")[-1]
+        print(f"✅ تم الرفع للسيرفر بنجاح، معرّف الملف: {file_id}", flush=True)
+
+        # 5. تأكيد النشر
         publish_params = {
             "name": clean_stream_name,
             "title": title[:95],
@@ -682,7 +698,7 @@ def post_to_odysee(video_file, title, description, tags=None):
             "tags": tags,
             "languages": ["ar"],
             "bid": "0.0001",
-            "file_path": uploaded_id
+            "file_path": file_id
         }
         if channel_id:
             publish_params["channel_id"] = channel_id
@@ -710,10 +726,10 @@ def post_to_odysee(video_file, title, description, tags=None):
             print(f"✅ تم النشر بنجاح على Odysee: {odysee_url}", flush=True)
             return odysee_url
         else:
-            print(f"ℹ️ نتيجة Odysee: {pub_res}", flush=True)
+            print(f"❌ رد النشر النهائي: {pub_res}", flush=True)
 
     except Exception as e:
-        print(f"⚠️ استثناء في Odysee: {e}", flush=True)
+        print(f"⚠️ استثناء في النشر على Odysee: {e}", flush=True)
 
     return None
 
@@ -778,7 +794,7 @@ if __name__ == "__main__":
     # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي
+    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي عبر TUS
     odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
     if not is_friday:
