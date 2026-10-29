@@ -1,9 +1,9 @@
-name: 4x Daily Quran Shorts Engine
+name: Quran Shorts Multi-Platform Engine
 
 on:
   workflow_dispatch:
   schedule:
-    # يعمل كل ساعتين بانتظام
+    # يعمل تلقائياً كل ساعتين بانتظام
     - cron: '23 */2 * * *'
 
 permissions:
@@ -45,7 +45,6 @@ jobs:
         DAILYMOTION_USERNAME: ${{ secrets.DAILYMOTION_USERNAME }}
         DAILYMOTION_PASSWORD: ${{ secrets.DAILYMOTION_PASSWORD }}
         ODYSEE_AUTH_TOKEN: ${{ secrets.ODYSEE_AUTH_TOKEN }}
-        ODYSEE_CHANNEL_NAME: ${{ secrets.ODYSEE_CHANNEL_NAME }}
       run: |
         python -u main.py
 
