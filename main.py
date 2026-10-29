@@ -61,7 +61,7 @@ def get_all_114_surahs():
 def get_friday_kahf_chunk(history, current_week_str):
     k_prog = history.get("kahf_progress", {})
     
-    # في بداية كل أسبوع جديد (يوم جمعة جديد) نبدأ من الآية الأولى والجزء الأول
+    # في بداية كل أسبوع جديد (يوم جمعة جديد) نبدأ من الآية 1
     if k_prog.get("week") != current_week_str:
         start_a = 1
         part_num = 1
@@ -69,12 +69,11 @@ def get_friday_kahf_chunk(history, current_week_str):
         start_a = k_prog.get("next_ayah", 1)
         part_num = k_prog.get("part", 1)
 
-    # إذا اكتملت السورة (110 آية) وتم تشغيل السكربت مجدداً في نفس الجمعة يعيد الدورة
+    # إذا اكتملت السورة يتم إعادة الدورة من البداية
     if start_a > 110:
         start_a = 1
         part_num = 1
 
-    # تحديد عدد الآيات للمقطع بحيث لا يتجاوز 55 ثانية
     chunk_size = 4
     end_a = min(110, start_a + chunk_size - 1)
     clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
@@ -592,7 +591,11 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
             print(f"✅ تم نشر الفيديو بنجاح على Dailymotion: {dm_link}", flush=True)
             return dm_link
         else:
-            print(f"❌ فشل نشر الفيديو في Dailymotion: {create_res}", flush=True)
+            err_data = create_res.get("error", {})
+            if err_data.get("code") == 403:
+                print("⏳ تم الوصول للحد الأقصى لعدد رفوعات Dailymotion اليوم، سيتجدد غداً تلقائياً.", flush=True)
+            else:
+                print(f"❌ فشل نشر الفيديو في Dailymotion: {create_res}", flush=True)
 
     except Exception as e:
         print(f"⚠️ خطأ أثناء النشر على Dailymotion: {e}", flush=True)
@@ -624,10 +627,10 @@ def post_to_odysee(video_file, title, description, tags=None):
         meta_fn = base64.b64encode(file_name.encode()).decode()
         meta_tk = base64.b64encode(auth_token.encode()).decode()
 
+        # تجربة خوادم رفع LBRY/Odysee TUS النشطة
         upload_servers = [
-            "https://upload.odysee.com/upload",
-            "https://upload.lbry.tv/upload",
-            "https://spore.odysee.tv/upload"
+            "https://upload.lbry.com/upload",
+            "https://api.odysee.com/upload"
         ]
 
         upload_location = None
@@ -653,11 +656,11 @@ def post_to_odysee(video_file, title, description, tags=None):
                     print(f"✅ تم فتح مسار الرفع بنجاح: {upload_location}", flush=True)
                     break
             except Exception as ex:
-                print(f"⚠️ الخادم {srv} غير متاح ({ex})، جاري تجربة التالي...", flush=True)
+                print(f"⚠️ تعذر الاتصال بـ {srv}، جاري المحاولة التالية...", flush=True)
                 continue
 
         if not upload_location:
-            print("❌ تعذر الاتصال بجميع خوادم الرفع المباشر لـ Odysee.", flush=True)
+            print("ℹ️ لم يتم الاتصال بخادم TUS، تم تخطي Odysee مؤقتاً لحين اكتمال الرفع المباشر.", flush=True)
             return None
 
         print("📦 جاري نقل حزم الفيديو...", flush=True)
@@ -735,17 +738,18 @@ def notify_telegram(message, cover_file=None):
         pass
 
 if __name__ == "__main__":
-    now_utc = datetime.datetime.utcnow()
+    # حساب توقيت مصر المحلي الفعلي (UTC + 2) لضمان العمل طوال الـ 24 ساعة ليوم الجمعة بدقة
+    local_egypt_time = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
     # 4 تعني يوم الجمعة (Friday)
-    is_friday = (now_utc.weekday() == 4)
+    is_friday = (local_egypt_time.weekday() == 4)
     reciter = random.choice(RECITERS_POOL)
     history = load_history()
 
     if is_friday:
-        week_str = now_utc.strftime("%Y_%U")
+        week_str = local_egypt_time.strftime("%Y_%U")
         item = get_friday_kahf_chunk(history, week_str)
-        print(f"🌟 يوم الجمعة المبارك: نشر سورة الكهف (جزء {item['part']}) - الآيات ({item['start']}-{item['end']})...", flush=True)
-        yt_title = f"سورة الكهف كاملة (جزء {item['part']}) الآيات ({item['start']}-{item['end']}) | نور الجمعة 🤍 #shorts"
+        print(f"🌟 يوم الجمعة المبارك بتوقيت مصر: إنتاج سورة الكهف (جزء {item['part']}) - الآيات ({item['start']}-{item['end']})...", flush=True)
+        yt_title = f"سورة الكهف | الجزء {item['part']} الآيات ({item['start']}-{item['end']}) 🤍 #shorts"
         caption = (
             f"🕌 سورة الكهف - الجزء {item['part']}\n"
             f"✨ الآيات الكريمة: ({item['start']} - {item['end']})\n"
@@ -771,7 +775,7 @@ if __name__ == "__main__":
         item["badge"], reciter, tag
     )
 
-    # 1. تجهيز ورفع الفيديو للحصول على رابط مباشر
+    # 1. تجهيز ورفع الفيديو للحصول على رابط مباشر لـ Buffer
     pub_url = upload_files(vid_file)
 
     # 2. النشر على قنوات Buffer (YouTube و Instagram)
@@ -786,7 +790,7 @@ if __name__ == "__main__":
     # 4. النشر المباشر على Odysee بملف الفيديو الفعلي
     odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
-    # حفظ السجل العام إذا لم يكن يوم الجمعة (يوم الجمعة يحفظ تقدمه تلقائياً داخل الدالة)
+    # حفظ السجل
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
             history["posted_keys"].append(item["key"])
