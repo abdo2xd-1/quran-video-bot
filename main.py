@@ -60,6 +60,8 @@ def get_all_114_surahs():
 
 def get_friday_kahf_chunk(history, current_week_str):
     k_prog = history.get("kahf_progress", {})
+    
+    # في بداية كل أسبوع جديد (يوم جمعة جديد) نبدأ من الآية الأولى والجزء الأول
     if k_prog.get("week") != current_week_str:
         start_a = 1
         part_num = 1
@@ -67,11 +69,14 @@ def get_friday_kahf_chunk(history, current_week_str):
         start_a = k_prog.get("next_ayah", 1)
         part_num = k_prog.get("part", 1)
 
+    # إذا اكتملت السورة (110 آية) وتم تشغيل السكربت مجدداً في نفس الجمعة يعيد الدورة
     if start_a > 110:
         start_a = 1
         part_num = 1
 
-    end_a = min(110, start_a + 2)
+    # تحديد عدد الآيات للمقطع بحيث لا يتجاوز 55 ثانية
+    chunk_size = 4
+    end_a = min(110, start_a + chunk_size - 1)
     clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
 
     history["kahf_progress"] = {
@@ -87,7 +92,7 @@ def get_friday_kahf_chunk(history, current_week_str):
         "end": end_a,
         "part": part_num,
         "key": clip_key,
-        "badge": f"الكهف (جزء {part_num}) 🌿"
+        "badge": f"سورة الكهف (جزء {part_num}) 🌿"
     }
 
 def pick_unposted_clip_all_quran(history):
@@ -604,13 +609,11 @@ def post_to_odysee(video_file, title, description, tags=None):
         return None
 
     try:
-        print("🚀 جاري بدء رفع الفيديو إلى Odysee عبر بروتوكول TUS المعتمد...", flush=True)
         headers = {
             "Content-Type": "application/json-rpc",
             "X-Lbry-Auth-Token": auth_token
         }
 
-        # 1. القناة المعتمدة: نستخدم claim_id المكتشف مسبقاً لحسابك
         channel_id = "d2a1e5238cbfc0b0a210a7f7d1d815c5f075d9a4"
         print(f"📡 القناة المعتمدة: @qran (Claim ID: {channel_id})", flush=True)
 
@@ -618,30 +621,46 @@ def post_to_odysee(video_file, title, description, tags=None):
         file_name = os.path.basename(video_file)
         clean_stream_name = f"quran-short-{int(time.time())}"
 
-        # 2. إنشاء الجلسة ورفع الفيديو إلى خادم التخزين السحابي لـ Odysee
-        tus_endpoint = "https://upload-v1.lbry.tv/upload"
         meta_fn = base64.b64encode(file_name.encode()).decode()
         meta_tk = base64.b64encode(auth_token.encode()).decode()
 
-        init_res = requests.post(
-            tus_endpoint,
-            headers={
-                "Tus-Resumable": "1.0.0",
-                "Upload-Length": str(file_size),
-                "Upload-Metadata": f"filename {meta_fn},auth_token {meta_tk}"
-            },
-            timeout=30
-        )
+        upload_servers = [
+            "https://upload.odysee.com/upload",
+            "https://upload.lbry.tv/upload",
+            "https://spore.odysee.tv/upload"
+        ]
 
-        upload_location = init_res.headers.get("Location")
+        upload_location = None
+        for srv in upload_servers:
+            try:
+                print(f"🚀 محاولة بدء جلسة رفع TUS عبر: {srv} ...", flush=True)
+                init_res = requests.post(
+                    srv,
+                    headers={
+                        "Tus-Resumable": "1.0.0",
+                        "Upload-Length": str(file_size),
+                        "Upload-Metadata": f"filename {meta_fn},auth_token {meta_tk}"
+                    },
+                    timeout=15
+                )
+                loc = init_res.headers.get("Location")
+                if loc:
+                    if loc.startswith("/"):
+                        from urllib.parse import urlparse
+                        p = urlparse(srv)
+                        loc = f"{p.scheme}://{p.netloc}{loc}"
+                    upload_location = loc
+                    print(f"✅ تم فتح مسار الرفع بنجاح: {upload_location}", flush=True)
+                    break
+            except Exception as ex:
+                print(f"⚠️ الخادم {srv} غير متاح ({ex})، جاري تجربة التالي...", flush=True)
+                continue
+
         if not upload_location:
-            print(f"❌ تعذر فتح مسار الرفع من خادم TUS (Status: {init_res.status_code})", flush=True)
+            print("❌ تعذر الاتصال بجميع خوادم الرفع المباشر لـ Odysee.", flush=True)
             return None
 
-        if upload_location.startswith("/"):
-            upload_location = f"https://upload-v1.lbry.tv{upload_location}"
-
-        print("📦 جاري نقل حزم الفيديو إلى خوادم Odysee...", flush=True)
+        print("📦 جاري نقل حزم الفيديو...", flush=True)
         with open(video_file, "rb") as vf:
             patch_res = requests.patch(
                 upload_location,
@@ -655,13 +674,12 @@ def post_to_odysee(video_file, title, description, tags=None):
             )
 
         if patch_res.status_code not in [200, 204]:
-            print(f"❌ فشل نقل أجزاء الفيديو (Status: {patch_res.status_code})", flush=True)
+            print(f"❌ فشل نقل بايتات الفيديو (Status: {patch_res.status_code})", flush=True)
             return None
 
         file_id = upload_location.rstrip("/").split("/")[-1]
-        print(f"✅ تم الرفع للسيرفر بنجاح، المعرف السحابي: {file_id}", flush=True)
+        print(f"✅ تم الرفع للسيرفر بنجاح، المعرف: {file_id}", flush=True)
 
-        # 3. تثبيت البث الرسمي على القناة باستخدام المعرف السحابي
         publish_params = {
             "name": clean_stream_name,
             "title": title[:95],
@@ -718,6 +736,7 @@ def notify_telegram(message, cover_file=None):
 
 if __name__ == "__main__":
     now_utc = datetime.datetime.utcnow()
+    # 4 تعني يوم الجمعة (Friday)
     is_friday = (now_utc.weekday() == 4)
     reciter = random.choice(RECITERS_POOL)
     history = load_history()
@@ -725,7 +744,7 @@ if __name__ == "__main__":
     if is_friday:
         week_str = now_utc.strftime("%Y_%U")
         item = get_friday_kahf_chunk(history, week_str)
-        print(f"🌟 يوم الجمعة المبارك: إنتاج سورة الكهف (جزء {item['part']}) - الآيات ({item['start']}-{item['end']})...", flush=True)
+        print(f"🌟 يوم الجمعة المبارك: نشر سورة الكهف (جزء {item['part']}) - الآيات ({item['start']}-{item['end']})...", flush=True)
         yt_title = f"سورة الكهف كاملة (جزء {item['part']}) الآيات ({item['start']}-{item['end']}) | نور الجمعة 🤍 #shorts"
         caption = (
             f"🕌 سورة الكهف - الجزء {item['part']}\n"
@@ -752,10 +771,10 @@ if __name__ == "__main__":
         item["badge"], reciter, tag
     )
 
-    # 1. رفع المقطع للحصول على الرابط المباشر
+    # 1. تجهيز ورفع الفيديو للحصول على رابط مباشر
     pub_url = upload_files(vid_file)
 
-    # 2. النشر على منصات Buffer (YouTube و Instagram)
+    # 2. النشر على قنوات Buffer (YouTube و Instagram)
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
     else:
@@ -764,16 +783,17 @@ if __name__ == "__main__":
     # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
 
-    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي عبر TUS
+    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي
     odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
+    # حفظ السجل العام إذا لم يكن يوم الجمعة (يوم الجمعة يحفظ تقدمه تلقائياً داخل الدالة)
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
             history["posted_keys"].append(item["key"])
 
     save_history(history)
 
-    # 5. إرسال التقرير النهائي إلى Telegram
+    # 5. إرسال تقرير التليجرام الشامل
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة على ديلي موشن</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة على أوديسي</a>" if odysee_link else ""
     report = (
