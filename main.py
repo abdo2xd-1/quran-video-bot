@@ -21,7 +21,7 @@ from moviepy.editor import (
 )
 
 HISTORY_FILE = "history_shorts_all.json"
-FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
+RUQAA_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/arefruqaa/ArefRuqaa-Bold.ttf"
 
 RECITERS_POOL = [
     {"name": "مشاري العفاسي", "server": "https://server8.mp3quran.net/afs"},
@@ -30,108 +30,37 @@ RECITERS_POOL = [
     {"name": "محمد أيوب", "server": "https://server8.mp3quran.net/ayyub"}
 ]
 
+CINEMATIC_QUERIES = [
+    "solitary person walking forest cinematic",
+    "boat moving dark ocean aerial vertical",
+    "green winding mountain road aerial vertical",
+    "running in cinematic green field mountains",
+    "aerial view calm lake mountains landscape",
+    "drone shot pine tree forest valley",
+    "person walking alone nature hills vertical"
+]
+
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                d = json.load(f)
+                if "used_bg_ids" not in d:
+                    d["used_bg_ids"] = []
+                return d
         except Exception:
-            return {"posted_keys": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
-    return {"posted_keys": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
+            return {"posted_keys": [], "used_bg_ids": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
+    return {"posted_keys": [], "used_bg_ids": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
 
 def save_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
-def get_all_114_surahs():
-    cache_path = "surahs_114_meta.json"
-    if os.path.exists(cache_path):
-        with open(cache_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    try:
-        r = requests.get("https://api.alquran.cloud/v1/meta", timeout=20).json()
-        surahs = r.get("data", {}).get("surahs", {}).get("references", [])
-        meta = [{"number": s["number"], "name": s["name"].replace("سُورَةُ ", "").strip(), "ayahs": s["numberOfAyahs"]} for s in surahs]
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False)
-        return meta
-    except Exception:
-        return [{"number": 1, "name": "الفاتحة", "ayahs": 7}, {"number": 18, "name": "الكهف", "ayahs": 110}, {"number": 105, "name": "الفيل", "ayahs": 5}]
-
-def get_friday_kahf_chunk(history, current_week_str):
-    k_prog = history.get("kahf_progress", {})
-    
-    # في بداية كل أسبوع جديد (يوم جمعة جديد) نبدأ من الآية 1
-    if k_prog.get("week") != current_week_str:
-        start_a = 1
-        part_num = 1
-    else:
-        start_a = k_prog.get("next_ayah", 1)
-        part_num = k_prog.get("part", 1)
-
-    # إذا اكتملت السورة يتم إعادة الدورة من البداية
-    if start_a > 110:
-        start_a = 1
-        part_num = 1
-
-    chunk_size = 4
-    end_a = min(110, start_a + chunk_size - 1)
-    clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
-
-    history["kahf_progress"] = {
-        "week": current_week_str,
-        "next_ayah": end_a + 1,
-        "part": part_num + 1
-    }
-
-    return {
-        "surah": 18,
-        "name": "الكهف",
-        "start": start_a,
-        "end": end_a,
-        "part": part_num,
-        "key": clip_key,
-        "badge": f"سورة الكهف (جزء {part_num}) 🌿"
-    }
-
-def pick_unposted_clip_all_quran(history):
-    surahs = get_all_114_surahs()
-    posted_keys = set(history.get("posted_keys", []))
-
-    for _ in range(300):
-        surah = random.choice(surahs)
-        if surah["number"] == 18:
-            continue
-            
-        s_num = surah["number"]
-        s_name = surah["name"]
-        total_ayahs = surah["ayahs"]
-
-        chunk_size = 3 if total_ayahs >= 3 else total_ayahs
-        start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
-        end_a = min(total_ayahs, start_a + chunk_size - 1)
-
-        clip_key = f"{s_num}_{start_a}_{end_a}"
-        if clip_key not in posted_keys:
-            return {
-                "surah": s_num,
-                "name": s_name,
-                "start": start_a,
-                "end": end_a,
-                "part": None,
-                "key": clip_key,
-                "badge": f"سورة {s_name} 🌿"
-            }
-
-    history["posted_keys"] = []
-    s = random.choice([x for x in surahs if x["ayahs"] >= 3 and x["number"] != 18])
-    return {"surah": s["number"], "name": s["name"], "start": 1, "end": 3, "part": None, "key": f"{s['number']}_1_3_{int(time.time())}", "badge": f"سورة {s['name']} 🌿"}
-
 def get_font_base64():
-    font_path = "Amiri-Bold.ttf"
+    font_path = "ArefRuqaa-Bold.ttf"
     if not os.path.exists(font_path) or os.path.getsize(font_path) < 40000:
         try:
-            r = requests.get(FONT_URL, timeout=20)
+            r = requests.get(RUQAA_FONT_URL, timeout=25)
             with open(font_path, "wb") as f:
                 f.write(r.content)
         except Exception:
@@ -149,25 +78,13 @@ def clean_arabic(text):
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
-def apply_anti_copyright(raw_audio, out_audio):
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", raw_audio,
-        "-filter_complex", 
-        "[0:a]asetrate=44100*1.035,atempo=0.966,volume=1.15[aout]",
-        "-map", "[aout]", "-b:a", "192k", "-ar", "44100", out_audio
-    ]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return out_audio
-
 def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     s_str = f"{surah_num:03d}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
+    headers = {"User-Agent": "Mozilla/5.0"}
     surah_full_url = f"{reciter_info['server']}/{s_str}.mp3"
     raw_surah = f"raw_surah_{s_str}.mp3"
 
-    print("📥 جلب تلاوة السورة مباشرة من CDN...", flush=True)
+    print("📥 جلب تلاوة السورة بنقائها الأصلي...", flush=True)
     res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
     if res.status_code != 200:
         surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
@@ -204,72 +121,121 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
         "-c", "copy", raw_segment
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    apply_anti_copyright(raw_segment, out_file)
+    subprocess.run([
+        "ffmpeg", "-y", "-i", raw_segment, "-c:a", "copy", out_file
+    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     if os.path.exists(raw_surah): os.remove(raw_surah)
     if os.path.exists(raw_segment): os.remove(raw_segment)
     return True
 
-def render_quran_frame(words, active_idx, badge_text, font_b64):
+def fetch_unique_cinematic_bg(history, tag):
+    raw_bg = f"raw_bg_{tag}.mp4"
+    fast_bg = f"fast_bg_{tag}.mp4"
+    pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
+    headers = {"Authorization": pexels_key} if pexels_key else {}
+    used_ids = set(history.get("used_bg_ids", []))
+
+    chosen_link = None
+    chosen_id = None
+
+    shuffled_queries = list(CINEMATIC_QUERIES)
+    random.shuffle(shuffled_queries)
+
+    for query in shuffled_queries:
+        try:
+            page = random.randint(1, 4)
+            api_url = f"https://api.pexels.com/videos/search?query={requests.utils.quote(query)}&orientation=portrait&per_page=15&page={page}"
+            res = requests.get(api_url, headers=headers, timeout=15).json()
+            videos = res.get("videos", [])
+            random.shuffle(videos)
+            for v in videos:
+                vid_id = str(v.get("id"))
+                if vid_id not in used_ids:
+                    hd_files = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))
+                    if hd_files:
+                        chosen_link = hd_files[-1].get("link")
+                        chosen_id = vid_id
+                        break
+            if chosen_link:
+                break
+        except Exception:
+            continue
+
+    if not chosen_link:
+        try:
+            res = requests.get("https://api.pexels.com/videos/search?query=nature+drone+scenery&orientation=portrait&per_page=15", headers=headers, timeout=15).json()
+            v = random.choice(res.get("videos", []))
+            chosen_link = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]["link"]
+            chosen_id = str(v.get("id"))
+        except Exception:
+            chosen_link = "https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-waves-in-the-sea-1234-large.mp4"
+            chosen_id = f"fallback_{int(time.time())}"
+
+    if chosen_id and chosen_id not in used_ids:
+        history["used_bg_ids"].append(chosen_id)
+        if len(history["used_bg_ids"]) > 300:
+            history["used_bg_ids"] = history["used_bg_ids"][-200:]
+
+    with open(raw_bg, "wb") as f:
+        f.write(requests.get(chosen_link, timeout=40).content)
+
+    scale_cmd = [
+        "ffmpeg", "-y", "-i", raw_bg,
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+        "-r", "24", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-an", fast_bg
+    ]
+    subprocess.run(scale_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.path.exists(raw_bg): 
+        os.remove(raw_bg)
+    return fast_bg
+
+def render_quran_ruqaa_frame(word_text, active_idx, font_b64):
     chrome_bin = get_chrome()
-    words_html = []
-    for i, w in enumerate(words):
-        if i == active_idx:
-            words_html.append(f'<span style="color:#D4AF37; transform:scale(1.08); text-shadow:0 0 16px rgba(212,175,55,0.95); display:inline-block;">{w}</span>')
-        else:
-            words_html.append(f'<span style="color:#FFFFFF; text-shadow:0 0 10px rgba(0,0,0,0.95);">{w}</span>')
-
-    full_verse = " ".join(words_html)
-    font_size = 64 if len(words) <= 8 else (48 if len(words) <= 16 else 38)
-
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
-  @font-face {{ font-family: 'Amiri'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
+  @font-face {{ font-family: 'ArefRuqaa'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ 
     width: 1080px; 
     height: 1920px; 
     background: transparent; 
     display: flex; 
-    flex-direction: column; 
     justify-content: center; 
     align-items: center; 
     position: relative; 
-    font-family: 'Amiri';
+    font-family: 'ArefRuqaa';
   }}
-  .badge {{ 
-    position: absolute; 
-    top: 220px; 
-    background: rgba(10,14,20,0.75); 
-    border: 1px solid rgba(212,175,55,0.5); 
-    color: #fff; 
-    font-size: 28px; 
-    padding: 10px 32px; 
-    border-radius: 30px; 
-  }}
-  .ayah {{ 
+  .verse-center {{ 
     direction: rtl; 
     text-align: center; 
-    font-size: {font_size}px; 
-    font-weight: bold; 
-    line-height: 2.0; 
-    max-width: 920px; 
-    margin: auto 0; 
+    color: #FFFFFF; 
+    font-size: 110px; 
+    font-weight: 700; 
+    letter-spacing: 2px;
+    padding: 0 40px;
+    text-shadow: 
+      0 4px 18px rgba(0, 0, 0, 0.95),
+      0 0 40px rgba(0, 0, 0, 0.7);
   }}
-  .watermark {{ 
+  .bottom-badge {{ 
     position: absolute; 
-    bottom: 140px; 
-    left: 50%; 
-    transform: translateX(-50%); 
-    font-size: 24px; 
-    color: rgba(255,255,255,0.5); 
-    direction: ltr; 
+    bottom: 110px; 
+    right: 70px; 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    color: rgba(255, 255, 255, 0.95); 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+    font-size: 32px; 
+    font-weight: 600; 
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    direction: ltr;
   }}
 </style></head>
 <body>
-  <div class="badge">🎧 {badge_text} 🌿</div>
-  <div class="ayah">{full_verse}</div>
-  <div class="watermark">@quran_reels</div>
+  <div class="verse-center">{word_text}</div>
+  <div class="bottom-badge">2.5M ♡</div>
 </body></html>"""
 
     h_path, p_path = f"tmp_{active_idx}.html", f"frame_{active_idx}.png"
@@ -284,63 +250,71 @@ def render_quran_frame(words, active_idx, badge_text, font_b64):
         os.remove(h_path)
     return p_path
 
-def generate_cover_file(surah_name, sub_title, reciter_name, font_b64, out_cover):
+def generate_modern_cover(surah_name, sub_title, reciter_name, font_b64, out_cover):
     chrome_bin = get_chrome()
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
-  @font-face {{ font-family: 'Amiri'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
+  @font-face {{ font-family: 'ArefRuqaa'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ 
     width: 1080px; 
     height: 1920px; 
-    background: radial-gradient(circle at center, #151d28 0%, #0a0d13 100%); 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    position: relative; 
-    font-family: 'Amiri';
-  }}
-  .box {{ 
-    width: 1080px; 
-    height: 1080px; 
+    background: linear-gradient(180deg, rgba(8,15,22,0.85) 0%, rgba(5,8,12,0.95) 100%); 
     display: flex; 
     flex-direction: column; 
     justify-content: center; 
     align-items: center; 
-    text-align: center; 
+    position: relative; 
+    font-family: 'ArefRuqaa';
+    color: #fff;
   }}
-  .badge {{ 
-    font-size: 26px; 
-    color: #fff; 
-    background: rgba(0,0,0,0.5); 
-    padding: 8px 24px; 
-    border-radius: 20px; 
-    border: 1px solid rgba(212,175,55,0.3); 
-    margin-bottom: 20px; 
+  .glass-card {{
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(20px);
+    border-radius: 40px;
+    padding: 70px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+    max-width: 880px;
+    width: 88%;
+  }}
+  .badge-tag {{
+    font-family: -apple-system, sans-serif;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 25px;
+    text-transform: uppercase;
   }}
   .title {{ 
-    font-size: 82px; 
+    font-size: 105px; 
     font-weight: bold; 
-    color: #D4AF37; 
-    margin-bottom: 15px; 
-    text-shadow: 0 0 20px rgba(212,175,55,0.8); 
-  }}
-  .reciter {{ 
-    font-size: 38px; 
-    color: #fff; 
-    margin-bottom: 15px; 
+    color: #FFFFFF; 
+    margin-bottom: 25px; 
+    text-shadow: 0 4px 25px rgba(255,255,255,0.25); 
   }}
   .sub {{ 
-    font-size: 26px; 
-    color: rgba(212,175,55,0.9); 
+    font-size: 38px; 
+    color: rgba(255,255,255,0.9); 
+    margin-bottom: 20px;
+  }}
+  .reciter {{ 
+    font-size: 32px; 
+    color: rgba(255, 255, 255, 0.6); 
   }}
 </style></head>
-<body><div class="box">
-  <div class="badge">🕌 تلاوة خاشعة بالذهب 🌿</div>
-  <div class="title">سُورَةُ {surah_name}</div>
-  <div class="reciter">بصوت القارئ {reciter_name}</div>
-  <div class="sub">{sub_title}</div>
-</div></body></html>"""
+<body>
+  <div class="glass-card">
+    <div class="badge-tag">Holy Quran • تلاوة خاشعة</div>
+    <div class="title">سورة {surah_name}</div>
+    <div class="sub">{sub_title}</div>
+    <div class="reciter">القارئ {reciter_name}</div>
+  </div>
+</body></html>"""
 
     h_path = "tmp_cov.html"
     with open(h_path, "w", encoding="utf-8") as f:
@@ -354,7 +328,7 @@ def generate_cover_file(surah_name, sub_title, reciter_name, font_b64, out_cover
         os.remove(h_path)
     return out_cover
 
-def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, reciter_info, tag):
+def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, reciter_info, tag, history):
     font_b64 = get_font_base64()
     rec_name = reciter_info["name"]
 
@@ -376,7 +350,7 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
         except Exception:
             continue
 
-    combined_text = " ۝ ".join(full_text_list)
+    combined_text = " ".join(full_text_list)
     words = combined_text.split()
     tot_chars = sum(len(w) for w in words) if words else 1
 
@@ -386,40 +360,23 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
         w_dur = (len(w) / tot_chars) * audio_clip.duration
         if w_start + w_dur > 48.5:
             break
-        frame_img = render_quran_frame(words, idx, badge_label, font_b64)
+        frame_img = render_quran_ruqaa_frame(w, idx, font_b64)
         text_clips.append(ImageClip(frame_img).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
         w_start += w_dur
 
     tot_dur = audio_clip.duration
     audio_clip = audio_clip.set_duration(tot_dur)
 
-    raw_bg = f"raw_bg_{tag}.mp4"
-    fast_bg = f"fast_bg_{tag}.mp4"
-    pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
-    headers = {"Authorization": pexels_key} if pexels_key else {}
-    res = requests.get("https://api.pexels.com/videos/search?query=nature+vertical+cinematic&orientation=portrait&per_page=15", headers=headers, timeout=15).json()
-    v_link = sorted(random.choice(res.get("videos", []))["video_files"], key=lambda x: x.get("width", 0))[-1]["link"]
-    
-    with open(raw_bg, "wb") as f:
-        f.write(requests.get(v_link, timeout=35).content)
-
-    scale_cmd = [
-        "ffmpeg", "-y", "-i", raw_bg,
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
-        "-r", "24", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-an", fast_bg
-    ]
-    subprocess.run(scale_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if os.path.exists(raw_bg): 
-        os.remove(raw_bg)
+    fast_bg = fetch_unique_cinematic_bg(history, tag)
 
     bg = VideoFileClip(fast_bg)
     bg = (bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur))
-    dim = ColorClip(size=(1080, 1920), color=(10, 15, 20)).set_opacity(0.32).set_duration(tot_dur)
+    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.18).set_duration(tot_dur)
 
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(audio_clip).set_duration(tot_dur)
 
     cover_file = f"cover_{tag}.jpg"
-    generate_cover_file(surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
+    generate_modern_cover(surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.10)
 
     temp_joined = f"temp_{tag}.mp4"
@@ -438,12 +395,9 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     except Exception:
         out_file = temp_joined
 
-    if os.path.exists(aud_file): 
-        os.remove(aud_file)
-    if os.path.exists(fast_bg): 
-        os.remove(fast_bg)
-    if os.path.exists(temp_joined) and temp_joined != out_file: 
-        os.remove(temp_joined)
+    if os.path.exists(aud_file): os.remove(aud_file)
+    if os.path.exists(fast_bg): os.remove(fast_bg)
+    if os.path.exists(temp_joined) and temp_joined != out_file: os.remove(temp_joined)
 
     return out_file, cover_file, rec_name
 
@@ -627,7 +581,6 @@ def post_to_odysee(video_file, title, description, tags=None):
         meta_fn = base64.b64encode(file_name.encode()).decode()
         meta_tk = base64.b64encode(auth_token.encode()).decode()
 
-        # تجربة خوادم رفع LBRY/Odysee TUS النشطة
         upload_servers = [
             "https://upload.lbry.com/upload",
             "https://api.odysee.com/upload"
@@ -636,7 +589,6 @@ def post_to_odysee(video_file, title, description, tags=None):
         upload_location = None
         for srv in upload_servers:
             try:
-                print(f"🚀 محاولة بدء جلسة رفع TUS عبر: {srv} ...", flush=True)
                 init_res = requests.post(
                     srv,
                     headers={
@@ -653,17 +605,14 @@ def post_to_odysee(video_file, title, description, tags=None):
                         p = urlparse(srv)
                         loc = f"{p.scheme}://{p.netloc}{loc}"
                     upload_location = loc
-                    print(f"✅ تم فتح مسار الرفع بنجاح: {upload_location}", flush=True)
                     break
-            except Exception as ex:
-                print(f"⚠️ تعذر الاتصال بـ {srv}، جاري المحاولة التالية...", flush=True)
+            except Exception:
                 continue
 
         if not upload_location:
-            print("ℹ️ لم يتم الاتصال بخادم TUS، تم تخطي Odysee مؤقتاً لحين اكتمال الرفع المباشر.", flush=True)
+            print("ℹ️ تم تخطي رفع Odysee المباشر مؤقتاً لعدم استجابة خوادم TUS.", flush=True)
             return None
 
-        print("📦 جاري نقل حزم الفيديو...", flush=True)
         with open(video_file, "rb") as vf:
             patch_res = requests.patch(
                 upload_location,
@@ -677,11 +626,9 @@ def post_to_odysee(video_file, title, description, tags=None):
             )
 
         if patch_res.status_code not in [200, 204]:
-            print(f"❌ فشل نقل بايتات الفيديو (Status: {patch_res.status_code})", flush=True)
             return None
 
         file_id = upload_location.rstrip("/").split("/")[-1]
-        print(f"✅ تم الرفع للسيرفر بنجاح، المعرف: {file_id}", flush=True)
 
         publish_params = {
             "name": clean_stream_name,
@@ -716,9 +663,6 @@ def post_to_odysee(video_file, title, description, tags=None):
             odysee_url = f"https://odysee.com/{claim_name}:{res_claim_id}"
             print(f"✅ تم النشر بنجاح على Odysee: {odysee_url}", flush=True)
             return odysee_url
-        else:
-            print(f"ℹ️ نتيجة Odysee: {pub_res}", flush=True)
-
     except Exception as e:
         print(f"⚠️ استثناء في Odysee: {e}", flush=True)
 
@@ -737,10 +681,83 @@ def notify_telegram(message, cover_file=None):
     except Exception:
         pass
 
+def get_friday_kahf_chunk(history, current_week_str):
+    k_prog = history.get("kahf_progress", {})
+    if k_prog.get("week") != current_week_str:
+        start_a = 1
+        part_num = 1
+    else:
+        start_a = k_prog.get("next_ayah", 1)
+        part_num = k_prog.get("part", 1)
+
+    if start_a > 110:
+        start_a = 1
+        part_num = 1
+
+    chunk_size = 4
+    end_a = min(110, start_a + chunk_size - 1)
+    clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
+
+    history["kahf_progress"] = {
+        "week": current_week_str,
+        "next_ayah": end_a + 1,
+        "part": part_num + 1
+    }
+
+    return {
+        "surah": 18,
+        "name": "الكهف",
+        "start": start_a,
+        "end": end_a,
+        "part": part_num,
+        "key": clip_key,
+        "badge": f"سورة الكهف (جزء {part_num}) 🌿"
+    }
+
+def pick_unposted_clip_all_quran(history):
+    surahs_meta_file = "surahs_114_meta.json"
+    if os.path.exists(surahs_meta_file):
+        with open(surahs_meta_file, "r", encoding="utf-8") as f:
+            surahs = json.load(f)
+    else:
+        try:
+            r = requests.get("https://api.alquran.cloud/v1/meta", timeout=20).json()
+            raw_s = r.get("data", {}).get("surahs", {}).get("references", [])
+            surahs = [{"number": s["number"], "name": s["name"].replace("سُورَةُ ", "").strip(), "ayahs": s["numberOfAyahs"]} for s in raw_s]
+            with open(surahs_meta_file, "w", encoding="utf-8") as f:
+                json.dump(surahs, f, ensure_ascii=False)
+        except Exception:
+            surahs = [{"number": 1, "name": "الفاتحة", "ayahs": 7}, {"number": 18, "name": "الكهف", "ayahs": 110}, {"number": 67, "name": "الملك", "ayahs": 30}]
+
+    posted_keys = set(history.get("posted_keys", []))
+    for _ in range(300):
+        surah = random.choice(surahs)
+        if surah["number"] == 18:
+            continue
+        s_num = surah["number"]
+        s_name = surah["name"]
+        total_ayahs = surah["ayahs"]
+        chunk_size = 3 if total_ayahs >= 3 else total_ayahs
+        start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
+        end_a = min(total_ayahs, start_a + chunk_size - 1)
+        clip_key = f"{s_num}_{start_a}_{end_a}"
+        if clip_key not in posted_keys:
+            return {
+                "surah": s_num,
+                "name": s_name,
+                "start": start_a,
+                "end": end_a,
+                "part": None,
+                "key": clip_key,
+                "badge": f"سورة {s_name} 🌿"
+            }
+
+    history["posted_keys"] = []
+    s = random.choice([x for x in surahs if x["ayahs"] >= 3 and x["number"] != 18])
+    return {"surah": s["number"], "name": s["name"], "start": 1, "end": 3, "part": None, "key": f"{s['number']}_1_3_{int(time.time())}", "badge": f"سورة {s['name']} 🌿"}
+
 if __name__ == "__main__":
-    # حساب توقيت مصر المحلي الفعلي (UTC + 2) لضمان العمل طوال الـ 24 ساعة ليوم الجمعة بدقة
     local_egypt_time = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
-    # 4 تعني يوم الجمعة (Friday)
     is_friday = (local_egypt_time.weekday() == 4)
     reciter = random.choice(RECITERS_POOL)
     history = load_history()
@@ -772,42 +789,35 @@ if __name__ == "__main__":
 
     vid_file, cov_file, r_name = build_fast_short_video(
         item["surah"], item["name"], item["start"], item["end"],
-        item["badge"], reciter, tag
+        item["badge"], reciter, tag, history
     )
 
-    # 1. تجهيز ورفع الفيديو للحصول على رابط مباشر لـ Buffer
     pub_url = upload_files(vid_file)
 
-    # 2. النشر على قنوات Buffer (YouTube و Instagram)
     if pub_url:
         post_to_buffer(pub_url, yt_title, caption)
     else:
         print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
 
-    # 3. النشر المباشر على Dailymotion
     dm_link = post_to_dailymotion(vid_file, yt_title, caption)
-
-    # 4. النشر المباشر على Odysee بملف الفيديو الفعلي
     odysee_link = post_to_odysee(vid_file, yt_title, caption)
 
-    # حفظ السجل
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
             history["posted_keys"].append(item["key"])
 
     save_history(history)
 
-    # 5. إرسال تقرير التليجرام الشامل
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة على ديلي موشن</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة على أوديسي</a>" if odysee_link else ""
     report = (
-        f"✨ <b>تم إنتاج ونشر مقطع Shorts جديد بنجاح!</b>\n\n"
+        f"✨ <b>تم إنتاج ونشر مقطع Shorts سينمائي جديد بنجاح!</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']} " + (f"(جزء {item['part']})" if item.get("part") else "") + f"\n"
         f"🔢 <b>الآيات:</b> ({item['start']} إلى {item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
-        f"⏱️ <b>النوع:</b> فيديو طولي 9:16 بكلمات مذهبة متحركة\n"
+        f"🎥 <b>الإخراج:</b> خط الرقعة الأبيض الممتد وظل سينمائي ناعم\n"
         f"🔒 <b>كود السجل:</b> <code>{item['key']}</code>\n"
-        f"🔗 <b>الرابط الأصلي:</b> <a href='{pub_url}'>تحميل المقطع</a>"
+        f"🔗 <b>الرابط المباشر:</b> <a href='{pub_url}'>تحميل المقطع</a>"
         f"{dm_report}"
         f"{odysee_report}"
     )
