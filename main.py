@@ -75,7 +75,7 @@ def get_chrome():
 
 def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     s_str = f"{surah_num:03d}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     surah_full_url = f"{reciter_info['server']}/{s_str}.mp3"
     raw_surah = f"raw_surah_{s_str}.mp3"
 
@@ -124,30 +124,60 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     if os.path.exists(raw_segment): os.remove(raw_segment)
     return True
 
-# تم تحديث هذه الدالة بالكامل لمعالجة الخطأ 183
+# تم تطوير هذه الدالة بالكامل لتخطي أخطاء الـ 403 ومنع انهيار FFmpeg
 def prepare_exact_bordeaux_video(tag, min_duration):
     raw_bg = f"raw_bordeaux_{tag}.mp4"
     fast_bg = f"ready_bordeaux_{tag}.mp4"
 
-    print("🎥 جلب فيديو المطر ومسار الترام الأصلي...", flush=True)
-    # إضافة User-Agent حقيقي لمنع السيرفر من رفض التحميل
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-    }
-    
+    print("🎥 محاولة جلب فيديو Mixkit الأصلي للمطر...", flush=True)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    success = False
+
     try:
-        res = requests.get(EXACT_BORDEAUX_RAIN_VIDEO, headers=headers, timeout=60)
+        res = requests.get(EXACT_BORDEAUX_RAIN_VIDEO, headers=headers, timeout=20)
         res.raise_for_status()
         with open(raw_bg, "wb") as f:
             f.write(res.content)
+        # التحقق من أن الملف فيديو حقيقي وليس صفحة HTML
+        if os.path.getsize(raw_bg) > 100000:
+            success = True
     except Exception as e:
-        print(f"⚠️ خطأ في تحميل فيديو Mixkit، جاري استخدام فيديو بديل: {e}", flush=True)
-        # فيديو مطر سينمائي بديل من Pexels يعمل كملاذ آمن
-        fallback_url = "https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4"
-        res = requests.get(fallback_url, headers=headers, timeout=60)
-        with open(raw_bg, "wb") as f:
-            f.write(res.content)
+        print(f"⚠️ تم حظر Mixkit (403)، جاري التحويل للملاذ الآمن... ({e})", flush=True)
 
+    # إذا تم الحظر، استخدام Pexels API الآمن المربوط بحسابك لتخطي الحظر
+    if not success:
+        print("🔄 جلب مشهد مطر بديل باستخدام مفتاح Pexels API المعتمد...", flush=True)
+        pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
+        p_headers = {"Authorization": pexels_key} if pexels_key else {}
+        
+        try:
+            api_url = "https://api.pexels.com/videos/search?query=rain+street+dark+moody&orientation=portrait&per_page=15"
+            r = requests.get(api_url, headers=p_headers, timeout=15).json()
+            videos = r.get("videos", [])
+            
+            if videos:
+                v = random.choice(videos)
+                hd_file = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]
+                res2 = requests.get(hd_file.get("link"), timeout=60)
+                res2.raise_for_status()
+                with open(raw_bg, "wb") as f:
+                    f.write(res2.content)
+            else:
+                print("❌ لم يتم العثور على نتائج في Pexels.", flush=True)
+        except Exception as e2:
+            print(f"❌ فشل الاتصال بـ Pexels API أيضاً: {e2}", flush=True)
+
+    # حماية نهائية لمنع خطأ FFmpeg (Error 183) إذا فشل التحميل تماماً
+    if not os.path.exists(raw_bg) or os.path.getsize(raw_bg) < 100000:
+        print("⚠️ إنشاء خلفية سينمائية مظلمة مؤقتة لتفادي انهيار النظام...", flush=True)
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#080d14:s=1080x1920:d=60",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", fast_bg
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(raw_bg): os.remove(raw_bg)
+        return fast_bg
+
+    # معالجة الفيديو الذي تم تحميله بنجاح
     scale_cmd = [
         "ffmpeg", "-y", "-i", raw_bg,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
