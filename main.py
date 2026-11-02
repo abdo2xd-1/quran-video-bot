@@ -21,45 +21,36 @@ from moviepy.editor import (
 )
 
 HISTORY_FILE = "history_shorts_all.json"
-QURAN_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Bold.ttf"
+QURAN_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Regular.ttf"
 
+# الرابط المباشر لمشهد الشارع المبلل والترام تحت المطر بفرنسا
+EXACT_BORDEAUX_RAIN_VIDEO = "https://assets.mixkit.co/videos/preview/mixkit-walking-down-a-wet-street-with-tram-tracks-in-bordeaux-41315-large.mp4"
+
+# قائمة القراء المحدثة (المنشاوي والدوسري فقط)
 RECITERS_POOL = [
-    {"name": "مشاري العفاسي", "server": "https://server8.mp3quran.net/afs"},
-    {"name": "علي الحذيفي", "server": "https://server9.mp3quran.net/hthfi"},
-    {"name": "أبو بكر الشاطري", "server": "https://server11.mp3quran.net/shatri"},
-    {"name": "محمد أيوب", "server": "https://server8.mp3quran.net/ayyub"}
+    {"name": "محمد صديق المنشاوي", "server": "https://server10.mp3quran.net/minsh"},
+    {"name": "ياسر الدوسري", "server": "https://server11.mp3quran.net/yasser"}
 ]
 
-# كلمات بحث محددة بدقة لمناظر طبيعية مهيبة خالية تماماً من الحيوانات أو الأشخاص
-PURE_NATURE_QUERIES = [
-    "foggy mountains aerial 4k vertical",
-    "calm ocean waves aerial vertical",
-    "dramatic clouds mountains timelapse vertical",
-    "deep green forest drone vertical",
-    "scenic waterfall lush nature vertical",
-    "misty pine forest valley aerial vertical",
-    "desert sand dunes aerial sunset vertical",
-    "norway fjords landscape drone vertical"
-]
+# كلمات بحث وعلامات سيو (SEO) غنية جداً لتصدّر محركات البحث والتريند الإسلامي
+SEO_TAGS_YOUTUBE = "القرآن الكريم, تلاوة خاشعة, راحة نفسية, سورة, عبدالرحمن مسعد, يوم الجمعة, سورة الكهف, تلاوات قصيرة, quran, shorts, islam, quran recitation"
+SEO_HASHTAGS = "#القرآن_الكريم #تلاوة_خاشعة #راحة_نفسية #قرآن #shorts #reels #islam"
 
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                if "used_bg_ids" not in d:
-                    d["used_bg_ids"] = []
-                return d
+                return json.load(f)
         except Exception:
-            return {"posted_keys": [], "used_bg_ids": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
-    return {"posted_keys": [], "used_bg_ids": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}}
+            return {"posted_keys": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}, "used_bg_ids": []}
+    return {"posted_keys": [], "kahf_progress": {"week": None, "next_ayah": 1, "part": 1}, "used_bg_ids": []}
 
 def save_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def get_font_base64():
-    font_path = "Amiri-Bold.ttf"
+    font_path = "Amiri-Regular.ttf"
     if not os.path.exists(font_path) or os.path.getsize(font_path) < 40000:
         try:
             r = requests.get(QURAN_FONT_URL, timeout=25)
@@ -77,6 +68,10 @@ def clean_arabic(text):
         text = text.replace(s, '')
     return text.strip()
 
+def to_arabic_num(num):
+    arabic_digits = {'0': '٠', '1': '١', '2': '٢', '3': '٣', '4': '٤', '5': '٥', '6': '٦', '7': '٧', '8': '٨', '9': '٩'}
+    return "".join(arabic_digits.get(c, c) for c in str(num))
+
 def get_chrome():
     return shutil.which("google-chrome") or shutil.which("chromium-browser") or "google-chrome"
 
@@ -89,6 +84,7 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     print("📥 جلب تلاوة السورة بنقائها الأصلي...", flush=True)
     res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
     if res.status_code != 200:
+        # احتياطي لخادم آخر في حال فشل الأساسي
         surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
         res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
 
@@ -131,63 +127,14 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     if os.path.exists(raw_segment): os.remove(raw_segment)
     return True
 
-# جلب فيديو طبيعي طويل يكفي المقطع بالكامل دون أي تكرار نهائياً
-def fetch_long_unique_nature_bg(history, tag, min_duration):
-    raw_bg = f"raw_bg_{tag}.mp4"
-    fast_bg = f"fast_bg_{tag}.mp4"
-    pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
-    headers = {"Authorization": pexels_key} if pexels_key else {}
-    used_ids = set(history.get("used_bg_ids", []))
+def prepare_exact_bordeaux_video(tag, min_duration):
+    raw_bg = f"raw_bordeaux_{tag}.mp4"
+    fast_bg = f"ready_bordeaux_{tag}.mp4"
 
-    chosen_link = None
-    chosen_id = None
-
-    shuffled_queries = list(PURE_NATURE_QUERIES)
-    random.shuffle(shuffled_queries)
-
-    for query in shuffled_queries:
-        try:
-            page = random.randint(1, 5)
-            api_url = f"https://api.pexels.com/videos/search?query={requests.utils.quote(query)}&orientation=portrait&per_page=15&page={page}"
-            res = requests.get(api_url, headers=headers, timeout=15).json()
-            videos = res.get("videos", [])
-            random.shuffle(videos)
-            
-            for v in videos:
-                vid_id = str(v.get("id"))
-                v_dur = v.get("duration", 0)
-                # شرط أساسي: مدة الفيديو أطول من مدة الصوت لمنع التكرار (No Loop)
-                if vid_id not in used_ids and v_dur >= (min_duration + 2):
-                    hd_files = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))
-                    if hd_files:
-                        chosen_link = hd_files[-1].get("link")
-                        chosen_id = vid_id
-                        break
-            if chosen_link:
-                break
-        except Exception:
-            continue
-
-    if not chosen_link:
-        try:
-            res = requests.get("https://api.pexels.com/videos/search?query=scenic+nature+landscape&orientation=portrait&per_page=20", headers=headers, timeout=15).json()
-            candidates = [x for x in res.get("videos", []) if x.get("duration", 0) >= min_duration]
-            v = random.choice(candidates if candidates else res.get("videos", []))
-            chosen_link = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]["link"]
-            chosen_id = str(v.get("id"))
-        except Exception:
-            chosen_link = "https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-waves-in-the-sea-1234-large.mp4"
-            chosen_id = f"fallback_{int(time.time())}"
-
-    if chosen_id and chosen_id not in used_ids:
-        history["used_bg_ids"].append(chosen_id)
-        if len(history["used_bg_ids"]) > 400:
-            history["used_bg_ids"] = history["used_bg_ids"][-250:]
-
+    print("🎥 جلب فيديو المطر ومسار الترام الأصلي...", flush=True)
     with open(raw_bg, "wb") as f:
-        f.write(requests.get(chosen_link, timeout=45).content)
+        f.write(requests.get(EXACT_BORDEAUX_RAIN_VIDEO, timeout=60).content)
 
-    # معالجة بجودة فائقة Full HD (1080x1920)
     scale_cmd = [
         "ffmpeg", "-y", "-i", raw_bg,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
@@ -198,56 +145,53 @@ def fetch_long_unique_nature_bg(history, tag, min_duration):
         os.remove(raw_bg)
     return fast_bg
 
-# تصميم الكلمات الملكية الواضحة بخط أميري الفخم مع الظلال الاحترافية
-def render_quran_hd_frame(word_text, active_idx, font_b64):
+def render_lower_verse_frame(verse_text, timer_str, idx, font_b64):
     chrome_bin = get_chrome()
     html = f"""<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <style>
-  @font-face {{ font-family: 'Amiri'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); font-weight: bold; }}
+  @font-face {{ font-family: 'Amiri'; src: url('data:font/truetype;charset=utf-8;base64,{font_b64}') format('truetype'); }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ 
     width: 1080px; 
     height: 1920px; 
     background: transparent; 
     display: flex; 
-    justify-content: center; 
+    flex-direction: column;
+    justify-content: flex-end; 
     align-items: center; 
     position: relative; 
     font-family: 'Amiri', serif;
+    padding-bottom: 310px;
   }}
-  .verse-center {{ 
+  .verse-box {{ 
     direction: rtl; 
     text-align: center; 
     color: #FFFFFF; 
-    font-size: 135px; 
-    font-weight: bold; 
-    line-height: 1.4;
-    padding: 0 45px;
+    font-size: 56px; 
+    font-weight: normal; 
+    line-height: 1.8;
+    max-width: 900px;
+    padding: 0 40px;
     text-shadow: 
-      0 4px 15px rgba(0, 0, 0, 0.95),
-      0 0 35px rgba(0, 0, 0, 0.85),
-      0 0 10px rgba(0, 0, 0, 0.9);
+      0 2px 10px rgba(0, 0, 0, 0.95),
+      0 4px 25px rgba(0, 0, 0, 0.85);
   }}
-  .bottom-badge {{ 
-    position: absolute; 
-    bottom: 110px; 
-    right: 70px; 
-    display: flex; 
-    align-items: center; 
-    color: #FFFFFF; 
+  .timer {{ 
+    margin-top: 15px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-    font-size: 34px; 
-    font-weight: 700; 
-    text-shadow: 0 3px 12px rgba(0,0,0,0.9);
+    font-size: 26px; 
+    color: rgba(255, 255, 255, 0.7); 
+    letter-spacing: 1px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.9);
     direction: ltr;
   }}
 </style></head>
 <body>
-  <div class="verse-center">{word_text}</div>
-  <div class="bottom-badge">2.5M ♡</div>
+  <div class="verse-box">{verse_text}</div>
+  <div class="timer">{timer_str}</div>
 </body></html>"""
 
-    h_path, p_path = f"tmp_{active_idx}.html", f"frame_{active_idx}.png"
+    h_path, p_path = f"tmp_{idx}.html", f"frame_{idx}.png"
     with open(h_path, "w", encoding="utf-8") as f:
         f.write(html)
     subprocess.run([
@@ -259,14 +203,12 @@ def render_quran_hd_frame(word_text, active_idx, font_b64):
         os.remove(h_path)
     return p_path
 
-# صورة مصغرة حية مشتقة من المنظر الطبيعي نفسه بتصميم سينمائي متقن
-def generate_cinematic_thumbnail(bg_video_path, surah_name, sub_title, reciter_name, font_b64, out_cover):
+def generate_emerald_blue_card(bg_video_path, surah_name, sub_title, reciter_name, font_b64, out_cover):
     chrome_bin = get_chrome()
     frame_bg = "thumb_bg.jpg"
     
-    # التقاط لقطة فائقة الدقة من منتصف منظر الفيديو الطبيعي كخلفية للصورة المصغرة
     subprocess.run([
-        "ffmpeg", "-y", "-ss", "2.0", "-i", bg_video_path, "-vframes", "1", "-q:v", "1", frame_bg
+        "ffmpeg", "-y", "-ss", "3.0", "-i", bg_video_path, "-vframes", "1", "-q:v", "1", frame_bg
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     bg_data_uri = ""
@@ -283,62 +225,84 @@ def generate_cinematic_thumbnail(bg_video_path, surah_name, sub_title, reciter_n
     height: 1920px; 
     background: url('{bg_data_uri}') center center / cover no-repeat;
     display: flex; 
-    flex-direction: column; 
     justify-content: center; 
     align-items: center; 
     position: relative; 
     font-family: 'Amiri', serif;
-    color: #fff;
+    overflow: hidden;
   }}
-  .overlay {{
+  .backdrop-overlay {{
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.6) 100%);
+    background: radial-gradient(circle at center, rgba(8, 24, 38, 0.5) 0%, rgba(5, 15, 12, 0.85) 100%),
+                linear-gradient(180deg, rgba(13, 27, 42, 0.45) 0%, rgba(9, 21, 16, 0.6) 100%);
+    backdrop-filter: blur(14px) brightness(0.62);
   }}
-  .content {{
+  .particle-glow {{
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-image: 
+      radial-gradient(circle at 20% 30%, rgba(0, 150, 255, 0.1) 0%, transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+  }}
+  .glass-card {{
     position: relative;
     z-index: 2;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(32px) saturate(180%);
+    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 40px;
+    padding: 70px 60px;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 0 40px;
+    box-shadow: 0 40px 80px rgba(0, 0, 0, 0.7), 
+                inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    max-width: 880px;
+    width: 88%;
   }}
   .badge {{
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    backdrop-filter: blur(12px);
-    border-radius: 30px;
-    padding: 12px 36px;
-    font-size: 32px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 26px;
     font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.85);
     margin-bottom: 30px;
-    letter-spacing: 1px;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    background: rgba(255, 255, 255, 0.12);
+    padding: 8px 32px;
+    border-radius: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
   }}
-  .title {{ 
-    font-size: 130px; 
-    font-weight: bold; 
-    color: #FFFFFF; 
-    margin-bottom: 20px; 
-    text-shadow: 0 4px 30px rgba(0,0,0,0.95); 
+  .title {{
+    font-size: 100px;
+    font-weight: bold;
+    color: #FFFFFF;
+    margin-bottom: 20px;
+    text-shadow: 0 4px 30px rgba(255, 255, 255, 0.22), 
+                0 0 35px rgba(0, 150, 255, 0.35),
+                0 2px 12px rgba(0, 0, 0, 0.8);
   }}
-  .sub {{ 
-    font-size: 46px; 
-    color: #E2E8F0; 
+  .sub {{
+    font-size: 46px;
+    color: #E2E8F0;
     margin-bottom: 25px;
-    text-shadow: 0 3px 15px rgba(0,0,0,0.9);
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.75);
   }}
-  .reciter {{ 
-    font-size: 36px; 
-    color: #CBD5E1; 
-    text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+  .reciter {{
+    font-size: 34px;
+    color: rgba(255, 255, 255, 0.65);
+    letter-spacing: 0.5px;
   }}
 </style></head>
 <body>
-  <div class="overlay"></div>
-  <div class="content">
-    <div class="badge">تلاوة خاشعة 🌿</div>
+  <div class="backdrop-overlay"></div>
+  <div class="particle-glow"></div>
+  <div class="glass-card">
+    <div class="badge">Holy Quran • تلاوة خاشعة</div>
     <div class="title">سورة {surah_name}</div>
     <div class="sub">{sub_title}</div>
     <div class="reciter">القارئ {reciter_name}</div>
@@ -369,54 +333,47 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     if audio_clip.duration > 48.0:
         audio_clip = audio_clip.subclip(0, 48.0)
 
-    full_text_list = []
+    verses_payload = []
     for a in range(start_a, end_a + 1):
         try:
             t_res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/quran-simple", timeout=10).json()
             txt = clean_arabic(t_res.get("data", {}).get("text", ""))
             if a == 1 and surah_num != 1:
                 txt = txt.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
-            full_text_list.append(txt)
+            num_symbol = f" ﴿{to_arabic_num(a)}﴾"
+            verses_payload.append(txt + num_symbol)
         except Exception:
             continue
 
-    combined_text = " ".join(full_text_list)
-    words = combined_text.split()
-    tot_chars = sum(len(w) for w in words) if words else 1
+    tot_dur = audio_clip.duration
+    v_count = len(verses_payload) if verses_payload else 1
+    per_verse_dur = tot_dur / v_count
 
     text_clips = []
-    w_start = 0.0
-    for idx, w in enumerate(words):
-        w_dur = (len(w) / tot_chars) * audio_clip.duration
-        if w_start + w_dur > 48.5:
-            break
-        frame_img = render_quran_hd_frame(w, idx, font_b64)
-        text_clips.append(ImageClip(frame_img).set_start(w_start).set_duration(w_dur).set_position(("center", "center")))
-        w_start += w_dur
+    for idx, verse_str in enumerate(verses_payload):
+        start_t = idx * per_verse_dur
+        dur_t = per_verse_dur
+        mins = int(start_t // 60)
+        secs = int(start_t % 60)
+        timer_str = f"{mins:02d}:{secs:02d}"
 
-    tot_dur = audio_clip.duration
-    audio_clip = audio_clip.set_duration(tot_dur)
+        frame_img = render_lower_verse_frame(verse_str, timer_str, idx, font_b64)
+        text_clips.append(ImageClip(frame_img).set_start(start_t).set_duration(dur_t).set_position(("center", "bottom")))
 
-    # جلب منظر طبيعي صافي طويل كافٍ للمقطع كاملاً بدون تكرار
-    fast_bg = fetch_long_unique_nature_bg(history, tag, tot_dur)
-
+    fast_bg = prepare_exact_bordeaux_video(tag, tot_dur)
     bg = VideoFileClip(fast_bg)
-    bg = bg.subclip(0, tot_dur)
+    bg = bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)
     
-    # تظليل سينمائي خفيف جداً يبرز الكلمات دون إخفاء جمال المنظر الطبيعي
-    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.12).set_duration(tot_dur)
-
+    dim = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_opacity(0.18).set_duration(tot_dur)
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(audio_clip).set_duration(tot_dur)
 
-    # إنشاء صورة مصغرة سينمائية مطابقة للمنظر الطبيعي
     cover_file = f"cover_{tag}.jpg"
-    generate_cinematic_thumbnail(fast_bg, surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
+    generate_emerald_blue_card(fast_bg, surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.10)
 
     temp_joined = f"temp_{tag}.mp4"
     joined = concatenate_videoclips([cover_clip, main_video])
     
-    # تصدير بأعلى جودة Full HD ومعدل بت عالي
     joined.write_videofile(
         temp_joined, fps=30, codec="libx264", audio_codec="aac", 
         bitrate="6000k", threads=4, preset="medium"
@@ -714,7 +671,7 @@ def notify_telegram(message, cover_file=None):
         requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"}, timeout=10)
         if cover_file and os.path.exists(cover_file):
             with open(cover_file, "rb") as pf:
-                requests.post(f"https://api.telegram.org/bot{bot_token}/sendPhoto", data={"chat_id": chat_id, "caption": "📸 الغلاف السينمائي المعتمد 🌿"}, files={"photo": pf}, timeout=20)
+                requests.post(f"https://api.telegram.org/bot{bot_token}/sendPhoto", data={"chat_id": chat_id, "caption": "📸 الغلاف المعتمد 🌿"}, files={"photo": pf}, timeout=20)
     except Exception:
         pass
 
@@ -803,23 +760,26 @@ if __name__ == "__main__":
         week_str = local_egypt_time.strftime("%Y_%U")
         item = get_friday_kahf_chunk(history, week_str)
         print(f"🌟 يوم الجمعة المبارك بتوقيت مصر: إنتاج سورة الكهف (جزء {item['part']}) - الآيات ({item['start']}-{item['end']})...", flush=True)
-        yt_title = f"سورة الكهف | الجزء {item['part']} الآيات ({item['start']}-{item['end']}) 🤍 #shorts"
+        yt_title = f"سورة الكهف كاملة | الجزء {item['part']} الآيات ({item['start']}-{item['end']}) 🌿 راحة نفسية القارئ {reciter['name']} #shorts"
         caption = (
-            f"🕌 سورة الكهف - الجزء {item['part']}\n"
+            f"📖 سورة الكهف - الجزء {item['part']}\n"
             f"✨ الآيات الكريمة: ({item['start']} - {item['end']})\n"
             f"🎙️ بصوت القارئ: {reciter['name']}\n\n"
-            f"قال ﷺ: (من قرأ سورة الكهف في يوم الجمعة أضاء له من النور ما بين الجمعتين) 🌿\n\n"
-            f"#سورة_الكهف #يوم_الجمعة #جمعة_مباركة #قرآن #shorts #reels"
+            f"تلاوة خاشعة تريح القلوب من سورة الكهف المباركة ليوم الجمعة 🤍\n"
+            f"قال ﷺ: (من قرأ سورة الكهف في يوم الجمعة أضاء له من النور ما بين الجمعتين)\n\n"
+            f"لا تنسى الاشتراك وتفعيل الجرس ليصلك كل جديد 🎧\n\n"
+            f"{SEO_HASHTAGS} #يوم_الجمعة #سورة_الكهف"
         )
     else:
         item = pick_unposted_clip_all_quran(history)
         print(f"🎬 اختيار مقطع Shorts من القرآن: سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
-        yt_title = f"تلاوة خاشعة | سورة {item['name']} ({item['start']}-{item['end']}) 🤍 #shorts"
+        yt_title = f"تلاوة خاشعة تريح القلوب | سورة {item['name']} الآيات ({item['start']}-{item['end']}) 🤍 القارئ {reciter['name']} #shorts"
         caption = (
             f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
             f"🎙️ بصوت القارئ: {reciter['name']}\n\n"
-            f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء أحزاننا 🤍\n\n"
-            f"#سورة_{item['name']} #قرآن #shorts #reels #تلاوة_خاشعة"
+            f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء أحزاننا ونوراً لنا في الدنيا والآخرة 🤍\n\n"
+            f"اشترك في القناة لدعم نشر كتاب الله والمساهمة في الأجر 🎧\n\n"
+            f"{SEO_HASHTAGS} #سورة_{item['name']} #تلاوة_خاشعة"
         )
 
     tag = f"short_{item['key']}_{int(time.time())}"
@@ -836,8 +796,8 @@ if __name__ == "__main__":
     else:
         print("❌ فشل الحصول على رابط تحميل للفيديو، لم يتم الإرسال لـ Buffer.", flush=True)
 
-    dm_link = post_to_dailymotion(vid_file, yt_title, caption)
-    odysee_link = post_to_odysee(vid_file, yt_title, caption)
+    dm_link = post_to_dailymotion(vid_file, yt_title, caption, tags=SEO_TAGS_YOUTUBE)
+    odysee_link = post_to_odysee(vid_file, yt_title, caption, tags=SEO_TAGS_YOUTUBE.split(", "))
 
     if not is_friday:
         if item["key"] not in history["posted_keys"]:
@@ -848,11 +808,11 @@ if __name__ == "__main__":
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة على ديلي موشن</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة على أوديسي</a>" if odysee_link else ""
     report = (
-        f"✨ <b>تم إنتاج ونشر مقطع Shorts سينمائي جديد بنجاح!</b>\n\n"
+        f"✨ <b>تم إنتاج ونشر مقطع قرآن سينمائي جديد بنجاح!</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']} " + (f"(جزء {item['part']})" if item.get("part") else "") + f"\n"
         f"🔢 <b>الآيات:</b> ({item['start']} إلى {item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
-        f"🎥 <b>الإخراج:</b> مناظر طبيعية سينمائية صافية + خط قرآني عريض عالي الدقة\n"
+        f"🌧️ <b>النمط:</b> المشهد الأصلي لشوارع بوردو الماطرة مع رسم عثماني دقيق\n"
         f"🔒 <b>كود السجل:</b> <code>{item['key']}</code>\n"
         f"🔗 <b>الرابط المباشر:</b> <a href='{pub_url}'>تحميل المقطع</a>"
         f"{dm_report}"
@@ -860,8 +820,6 @@ if __name__ == "__main__":
     )
     notify_telegram(report, cov_file)
 
-    if os.path.exists(vid_file): 
-        os.remove(vid_file)
-    if os.path.exists(cov_file): 
-        os.remove(cov_file)
+    if os.path.exists(vid_file): os.remove(vid_file)
+    if os.path.exists(cov_file): os.remove(cov_file)
     print("=== اكتمل الرندر للشورتس، التحديث، والنشر بنجاح ===", flush=True)
