@@ -26,13 +26,11 @@ QURAN_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-
 # الرابط المباشر لمشهد الشارع المبلل والترام تحت المطر بفرنسا
 EXACT_BORDEAUX_RAIN_VIDEO = "https://assets.mixkit.co/videos/preview/mixkit-walking-down-a-wet-street-with-tram-tracks-in-bordeaux-41315-large.mp4"
 
-# قائمة القراء المحدثة (المنشاوي والدوسري فقط)
 RECITERS_POOL = [
     {"name": "محمد صديق المنشاوي", "server": "https://server10.mp3quran.net/minsh"},
     {"name": "ياسر الدوسري", "server": "https://server11.mp3quran.net/yasser"}
 ]
 
-# كلمات بحث وعلامات سيو (SEO) غنية جداً لتصدّر محركات البحث والتريند الإسلامي
 SEO_TAGS_YOUTUBE = "القرآن الكريم, تلاوة خاشعة, راحة نفسية, سورة, عبدالرحمن مسعد, يوم الجمعة, سورة الكهف, تلاوات قصيرة, quran, shorts, islam, quran recitation"
 SEO_HASHTAGS = "#القرآن_الكريم #تلاوة_خاشعة #راحة_نفسية #قرآن #shorts #reels #islam"
 
@@ -77,14 +75,13 @@ def get_chrome():
 
 def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     s_str = f"{surah_num:03d}"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     surah_full_url = f"{reciter_info['server']}/{s_str}.mp3"
     raw_surah = f"raw_surah_{s_str}.mp3"
 
     print("📥 جلب تلاوة السورة بنقائها الأصلي...", flush=True)
     res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
     if res.status_code != 200:
-        # احتياطي لخادم آخر في حال فشل الأساسي
         surah_full_url = f"https://server8.mp3quran.net/afs/{s_str}.mp3"
         res = requests.get(surah_full_url, headers=headers, timeout=60, stream=True)
 
@@ -127,13 +124,29 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     if os.path.exists(raw_segment): os.remove(raw_segment)
     return True
 
+# تم تحديث هذه الدالة بالكامل لمعالجة الخطأ 183
 def prepare_exact_bordeaux_video(tag, min_duration):
     raw_bg = f"raw_bordeaux_{tag}.mp4"
     fast_bg = f"ready_bordeaux_{tag}.mp4"
 
     print("🎥 جلب فيديو المطر ومسار الترام الأصلي...", flush=True)
-    with open(raw_bg, "wb") as f:
-        f.write(requests.get(EXACT_BORDEAUX_RAIN_VIDEO, timeout=60).content)
+    # إضافة User-Agent حقيقي لمنع السيرفر من رفض التحميل
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        res = requests.get(EXACT_BORDEAUX_RAIN_VIDEO, headers=headers, timeout=60)
+        res.raise_for_status()
+        with open(raw_bg, "wb") as f:
+            f.write(res.content)
+    except Exception as e:
+        print(f"⚠️ خطأ في تحميل فيديو Mixkit، جاري استخدام فيديو بديل: {e}", flush=True)
+        # فيديو مطر سينمائي بديل من Pexels يعمل كملاذ آمن
+        fallback_url = "https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4"
+        res = requests.get(fallback_url, headers=headers, timeout=60)
+        with open(raw_bg, "wb") as f:
+            f.write(res.content)
 
     scale_cmd = [
         "ffmpeg", "-y", "-i", raw_bg,
