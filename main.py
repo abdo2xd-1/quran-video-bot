@@ -18,7 +18,6 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip, concatenate_audioclips, concatenate_videoclips
 )
 
-HISTORY_FILE = "history_shorts_all.json"
 QURAN_FONT_URL = "https://" + "cdn.jsdelivr.net" + "/gh/google/fonts@main/ofl/amiri/Amiri-Regular.ttf"
 
 RECITERS_POOL = [
@@ -29,10 +28,11 @@ RECITERS_POOL = [
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        print("⚠️ مفتاح GEMINI_API_KEY غير موجود في إعدادات جيت هاب.", flush=True)
+        print("⚠️ مفتاح GEMINI_API_KEY غير موجود.", flush=True)
         return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name}", f"#القرآن_الكريم #سورة_{surah_name}"
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # استخدام أحدث نموذج مستقر من جوجل
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
     prompt = f"""
     أنت مخرج سينمائي وخبير يوتيوب SEO إسلامي. المقطع الحالي: سورة {surah_name} (الآيات {start_a} إلى {end_a}) بصوت {reciter_name}.
@@ -78,9 +78,10 @@ def to_arabic_num(num):
     return "".join(arabic_digits.get(c, c) for c in str(num))
 
 def get_font_base64():
-    if not os.path.exists("Amiri-Regular.ttf"):
-        with open("Amiri-Regular.ttf", "wb") as f: f.write(requests.get(QURAN_FONT_URL).content)
-    with open("Amiri-Regular.ttf", "rb") as f: return base64.b64encode(f.read()).decode("ascii")
+    font_path = "Amiri-Regular.ttf"
+    if not os.path.exists(font_path):
+        with open(font_path, "wb") as f: f.write(requests.get(QURAN_FONT_URL).content)
+    with open(font_path, "rb") as f: return base64.b64encode(f.read()).decode("ascii")
 
 def prepare_ai_background(bg_query, tag):
     raw_bg = f"raw_bg_{tag}.mp4"
