@@ -26,7 +26,6 @@ RECITERS_POOL = [
     {"name": "ياسر الدوسري", "id": "ar.yasseraldossari"}
 ]
 
-# ----------------- عقل الذكاء الاصطناعي (OpenRouter AI) -----------------
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     api_key = os.getenv("OPENAI_API_KEY", "").strip() 
     if not api_key:
@@ -71,7 +70,6 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
         print(f"⚠️ فشل الذكاء الاصطناعي، تفعيل الوضع الافتراضي: {e}", flush=True)
         return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name} 🤍", f"#القرآن_الكريم #سورة_{surah_name}"
 
-# ----------------- وظائف معالجة الفيديو والتزامن -----------------
 def clean_arabic(text):
     for s in ['۝', '۞', 'ۚ', 'ۖ', 'ۗ', 'ۘ', 'ۛ', 'ۜ']: text = text.replace(s, '')
     return text.strip()
@@ -234,7 +232,6 @@ def notify_telegram(message):
 if __name__ == "__main__":
     reciter = random.choice(RECITERS_POOL)
     
-    # رابط نظيف وخالٍ تماماً من علامات الماركداون
     surahs = requests.get("[https://api.alquran.cloud/v1/meta](https://api.alquran.cloud/v1/meta)").json()["data"]["surahs"]["references"]
     surah = random.choice([s for s in surahs if s["numberOfAyahs"] >= 3 and s["number"] != 18])
     start_a = random.randint(1, max(1, surah["numberOfAyahs"] - 2))
