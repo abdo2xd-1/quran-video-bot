@@ -49,7 +49,7 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     }
     
     payload = {
-        "model": "google/gemma-2-9b-it:free",
+        "model": "meta-llama/llama-3.1-8b-instruct:free", # تم تغيير النموذج ليكون مستقراً دائماً
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7
     }
@@ -151,36 +151,44 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
     audio_clips, video_clips, temp_files = [], [], []
     current_time = 0.0
 
-    print("📥 سحب وضبط تزامن الآيات برمجياً...", flush=True)
+    print("📥 سحب السورة كاملة بطلب واحد لتفادي الحظر...", flush=True)
     req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
+    # سحب السورة بالكامل لتخطي نظام حظر البوتات
+    surah_url = "https://" + "api.alquran.cloud" + f"/v1/surah/{surah_num}/{reciter_info['id']}"
+    surah_data = None
+    
+    for attempt in range(3):
+        try:
+            req = requests.get(surah_url, headers=req_headers, timeout=20)
+            if req.status_code == 200:
+                surah_data = req.json().get("data", {}).get("ayahs", [])
+                if surah_data:
+                    break
+        except Exception:
+            time.sleep(2)
+            
+    if not surah_data:
+        raise Exception("❌ لم يتم جلب بيانات السورة بسبب حظر السيرفر المستمر.")
+    
+    print("✂️ جاري قص وضبط تزامن الآيات المطلوبة...", flush=True)
     for a in range(start_a, end_a + 1):
-        data = None
-        for attempt in range(3):
-            try:
-                ayah_url = "https://" + "api.alquran.cloud" + f"/v1/ayah/{surah_num}:{a}/{reciter_info['id']}"
-                req = requests.get(ayah_url, headers=req_headers, timeout=15)
-                if req.status_code == 200:
-                    res = req.json()
-                    temp_data = res.get("data")
-                    if isinstance(temp_data, dict) and "audio" in temp_data and "text" in temp_data:
-                        data = temp_data
-                        break
-            except Exception:
-                time.sleep(2)
-                
-        if not data:
-            print(f"⚠️ تخطي الآية {a} لعدم استجابة السيرفر بعد 3 محاولات.", flush=True)
+        # البحث عن الآية المطلوبة داخل بيانات السورة
+        ayah_item = next((item for item in surah_data if item["numberInSurah"] == a), None)
+        
+        if not ayah_item:
+            print(f"⚠️ الآية {a} غير موجودة في البيانات المجلوبة.", flush=True)
             continue
             
         try:
             aud_file = f"aud_{a}_{tag}.mp3"
             with open(aud_file, "wb") as f: 
-                f.write(requests.get(data["audio"], headers=req_headers, timeout=30).content)
+                f.write(requests.get(ayah_item["audio"], headers=req_headers, timeout=30).content)
             temp_files.append(aud_file)
             
-            text = clean_arabic(data["text"])
-            if a == 1 and surah_num != 1: text = text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
+            text = clean_arabic(ayah_item["text"])
+            if a == 1 and surah_num != 1: 
+                text = text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").replace("بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", "").strip()
             
             a_clip = AudioFileClip(aud_file)
             mins, secs = int(current_time // 60), int(current_time % 60)
@@ -197,7 +205,7 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             continue
 
     if not audio_clips:
-        raise Exception("❌ لم يتم جلب أي آيات بنجاح بسبب خلل في سيرفرات القرآن.")
+        raise Exception("❌ فشلت عملية المزامنة ولم يتم معالجة أي آية.")
 
     final_audio = concatenate_audioclips(audio_clips)
     tot_dur = final_audio.duration
