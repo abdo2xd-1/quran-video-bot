@@ -27,6 +27,13 @@ RECITERS_POOL = [
 ]
 
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        print("⚠️ مفتاح GEMINI_API_KEY غير موجود في إعدادات جيت هاب.", flush=True)
+        return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name}", f"#القرآن_الكريم #سورة_{surah_name}"
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
     prompt = f"""
     أنت مخرج سينمائي وخبير يوتيوب SEO إسلامي. المقطع الحالي: سورة {surah_name} (الآيات {start_a} إلى {end_a}) بصوت {reciter_name}.
     المطلوب منك 3 أشياء بصيغة JSON فقط:
@@ -36,19 +43,16 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     لا تكتب أي شيء خارج الـ JSON.
     """
 
-    # استخدام ذكاء اصطناعي مجاني ومفتوح بالكامل لا يحتاج لأي مفاتيح أو حسابات
-    url = "https://" + "text.pollinations.ai" + "/"
     payload = {
-        "messages": [{"role": "user", "content": prompt}],
-        "model": "llama", 
-        "jsonMode": True,
-        "temperature": 0.7
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.7}
     }
 
     try:
-        res = requests.post(url, json=payload, timeout=30)
+        res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=20)
         if res.status_code == 200:
-            raw_text = res.text.strip()
+            data = res.json()
+            raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
             
             if "```json" in raw_text:
                 raw_text = raw_text.split("```json")[1].split("```")[0].strip()
@@ -57,8 +61,10 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
                 
             content = json.loads(raw_text)
             return content.get("bg_query", "cinematic dark rain"), content.get("title", f"تلاوة خاشعة | سورة {surah_name}"), content.get("description", f"#القرآن_الكريم #سورة_{surah_name}")
+        else:
+            print(f"⚠️ خطأ من Gemini API: {res.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ فشل الذكاء الاصطناعي المفتوح: {e}", flush=True)
+        print(f"⚠️ فشل الاتصال بـ Gemini: {e}", flush=True)
 
     print("⚠️ تفعيل الوضع الافتراضي", flush=True)
     return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name} 🤍", f"#القرآن_الكريم #سورة_{surah_name}"
