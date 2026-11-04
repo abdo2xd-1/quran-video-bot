@@ -19,7 +19,7 @@ from moviepy.editor import (
 )
 
 HISTORY_FILE = "history_shorts_all.json"
-QURAN_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-Regular.ttf"
+QURAN_FONT_URL = "https://" + "cdn.jsdelivr.net" + "/gh/google/fonts@main/ofl/amiri/Amiri-Regular.ttf"
 
 RECITERS_POOL = [
     {"name": "محمد صديق المنشاوي", "id": "ar.minshawi"},
@@ -31,7 +31,7 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     if not api_key:
         return "dark cinematic rain street", f"تلاوة خاشعة | سورة {surah_name}", "#القرآن #shorts"
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
+    url = "https://" + "openrouter.ai" + "/api/v1/chat/completions"
     prompt = f"""
     أنت مخرج سينمائي وخبير يوتيوب SEO إسلامي. المقطع الحالي: سورة {surah_name} (الآيات {start_a} إلى {end_a}) بصوت {reciter_name}.
     المطلوب منك 3 أشياء بصيغة JSON فقط:
@@ -44,7 +44,7 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com",
+        "HTTP-Referer": "https://" + "github.com",
         "X-Title": "QuranBot"
     }
     
@@ -101,7 +101,7 @@ def prepare_ai_background(bg_query, tag):
     success = False
 
     try:
-        api_url = f"[https://api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){bg_query}&orientation=portrait&per_page=10"
+        api_url = "https://" + "api.pexels.com" + f"/videos/search?query={bg_query}&orientation=portrait&per_page=10"
         r = requests.get(api_url, headers=p_headers, timeout=15).json()
         videos = r.get("videos", [])
         if videos:
@@ -115,7 +115,7 @@ def prepare_ai_background(bg_query, tag):
 
     if not success:
         print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية الموثوقة...", flush=True)
-        fallback_url = "[https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4](https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4)"
+        fallback_url = "https://" + "assets.mixkit.co" + "/videos/preview/mixkit-stars-in-space-1610-large.mp4"
         try:
             with open(raw_bg, "wb") as f: f.write(requests.get(fallback_url, timeout=60).content)
             if os.path.getsize(raw_bg) > 100000:
@@ -187,11 +187,10 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             continue
             
         try:
-            # الحل الذكي: إذا نسى الـ API إرسال الرابط، سنقوم ببنائه يدوياً من السيرفر الأساسي
             audio_url = ayah_item.get("audio")
             if not audio_url:
                 global_ayah_num = ayah_item.get("number", 1)
-                audio_url = f"[https://cdn.islamic.network/quran/audio/128/](https://cdn.islamic.network/quran/audio/128/){reciter_info['id']}/{global_ayah_num}.mp3"
+                audio_url = "https://" + "cdn.islamic.network" + f"/quran/audio/128/{reciter_info['id']}/{global_ayah_num}.mp3"
 
             aud_file = f"aud_{a}_{tag}.mp3"
             with open(aud_file, "wb") as f: 
@@ -244,7 +243,8 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
 def upload_files(video_file):
     try:
         with open(video_file, "rb") as f:
-            r = requests.post("[https://catbox.moe/user/api.php](https://catbox.moe/user/api.php)", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=120)
+            up_url = "https://" + "catbox.moe" + "/user/api.php"
+            r = requests.post(up_url, data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=120)
             if r.status_code == 200 and r.text.startswith("http"): return r.text.strip()
     except: return None
 
@@ -252,17 +252,23 @@ def post_to_dailymotion(video_file, title, description, tags):
     api_key = os.getenv("DAILYMOTION_KEY", "").strip()
     if not api_key: return None
     try:
-        token_res = requests.post("[https://api.dailymotion.com/oauth/token](https://api.dailymotion.com/oauth/token)", data={"grant_type": "password", "client_id": api_key, "client_secret": os.getenv("DAILYMOTION_SECRET"), "username": os.getenv("DAILYMOTION_USERNAME"), "password": os.getenv("DAILYMOTION_PASSWORD"), "scope": "manage_videos"}).json()
+        dm_token_url = "https://" + "api.dailymotion.com" + "/oauth/token"
+        token_res = requests.post(dm_token_url, data={"grant_type": "password", "client_id": api_key, "client_secret": os.getenv("DAILYMOTION_SECRET"), "username": os.getenv("DAILYMOTION_USERNAME"), "password": os.getenv("DAILYMOTION_PASSWORD"), "scope": "manage_videos"}).json()
         headers = {"Authorization": f"Bearer {token_res.get('access_token')}"}
-        up_url = requests.get("[https://api.dailymotion.com/file/upload](https://api.dailymotion.com/file/upload)", headers=headers).json().get("upload_url")
+        
+        dm_up_url = "https://" + "api.dailymotion.com" + "/file/upload"
+        up_url = requests.get(dm_up_url, headers=headers).json().get("upload_url")
         with open(video_file, "rb") as f: file_url = requests.post(up_url, files={"file": f}).json().get("url")
-        vid_id = requests.post("[https://api.dailymotion.com/me/videos](https://api.dailymotion.com/me/videos)", headers=headers, data={"url": file_url, "title": title[:250], "description": description, "tags": tags, "published": "true"}).json().get("id")
-        return f"[https://www.dailymotion.com/video/](https://www.dailymotion.com/video/){vid_id}" if vid_id else None
+        
+        dm_pub_url = "https://" + "api.dailymotion.com" + "/me/videos"
+        vid_id = requests.post(dm_pub_url, headers=headers, data={"url": file_url, "title": title[:250], "description": description, "tags": tags, "published": "true"}).json().get("id")
+        return "https://" + "[www.dailymotion.com](https://www.dailymotion.com)" + f"/video/{vid_id}" if vid_id else None
     except: return None
 
 def notify_telegram(message):
     try:
-        requests.post(f"[https://api.telegram.org/bot](https://api.telegram.org/bot){os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage", json={"chat_id": os.getenv("ADMIN_CHAT_ID"), "text": message, "parse_mode": "HTML"})
+        tg_url = "https://" + "api.telegram.org" + f"/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage"
+        requests.post(tg_url, json={"chat_id": os.getenv("ADMIN_CHAT_ID"), "text": message, "parse_mode": "HTML"})
     except: pass
 
 if __name__ == "__main__":
