@@ -26,13 +26,14 @@ RECITERS_POOL = [
     {"name": "ياسر الدوسري", "id": "ar.yasseraldossari"}
 ]
 
-# ----------------- عقل الذكاء الاصطناعي (OpenAI المخرج) -----------------
+# ----------------- عقل الذكاء الاصطناعي (OpenRouter AI) -----------------
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    # نستخدم نفس اسم المتغير حتى لا تضطر لتعديل ملف run.yml
+    api_key = os.getenv("OPENAI_API_KEY", "").strip() 
     if not api_key:
         return "dark cinematic rain street", f"تلاوة خاشعة | سورة {surah_name}", "#القرآن #shorts"
 
-    url = "https://api.openai.com/v1/chat/completions"
+    url = "https://openrouter.ai/api/v1/chat/completions"
     prompt = f"""
     أنت مخرج سينمائي وخبير يوتيوب SEO إسلامي. المقطع الحالي: سورة {surah_name} (الآيات {start_a} إلى {end_a}) بصوت {reciter_name}.
     المطلوب منك 3 أشياء بصيغة JSON فقط:
@@ -42,19 +43,32 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     لا تكتب أي شيء خارج الـ JSON.
     """
 
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com",
+        "X-Title": "QuranBot"
+    }
+    
     payload = {
-        "model": "gpt-4o-mini",
+        "model": "meta-llama/llama-3-8b-instruct:free",
         "messages": [{"role": "user", "content": prompt}],
-        "response_format": {"type": "json_object"},
         "temperature": 0.7
     }
 
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=20)
         res.raise_for_status()
-        content = json.loads(res.json()['choices'][0]['message']['content'])
-        return content.get("bg_query", "cinematic dark rain"), content.get("title"), content.get("description")
+        raw_text = res.json()['choices'][0]['message']['content'].strip()
+        
+        # تنظيف الرد إذا كان يحتوي على علامات Markdown
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_text:
+            raw_text = raw_text.split("```")[1].strip()
+            
+        content = json.loads(raw_text)
+        return content.get("bg_query", "cinematic dark rain"), content.get("title", f"تلاوة خاشعة | سورة {surah_name}"), content.get("description", f"#القرآن_الكريم #سورة_{surah_name}")
     except Exception as e:
         print(f"⚠️ فشل الذكاء الاصطناعي، تفعيل الوضع الافتراضي: {e}", flush=True)
         return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name} 🤍", f"#القرآن_الكريم #سورة_{surah_name}"
@@ -83,7 +97,7 @@ def prepare_ai_background(bg_query, tag):
     success = False
 
     try:
-        api_url = f"https://api.pexels.com/videos/search?query={bg_query}&orientation=portrait&per_page=10"
+        api_url = f"[https://api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){bg_query}&orientation=portrait&per_page=10"
         r = requests.get(api_url, headers=p_headers, timeout=15).json()
         videos = r.get("videos", [])
         if videos:
@@ -96,7 +110,7 @@ def prepare_ai_background(bg_query, tag):
 
     if not success or not os.path.exists(raw_bg):
         print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية...", flush=True)
-        fallback_url = "https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4"
+        fallback_url = "[https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4](https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4)"
         with open(raw_bg, "wb") as f: f.write(requests.get(fallback_url, timeout=60).content)
 
     subprocess.run([
@@ -127,24 +141,30 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
     current_time = 0.0
 
     print("📥 سحب وضبط تزامن الآيات برمجياً...", flush=True)
+    req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
     for a in range(start_a, end_a + 1):
-        try:
-            req = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/{reciter_info['id']}", timeout=15)
-            if req.status_code != 200:
-                print(f"⚠️ تخطي الآية {a} لعدم استجابة السيرفر.", flush=True)
-                continue
+        data = None
+        for attempt in range(3):
+            try:
+                req = requests.get(f"[https://api.alquran.cloud/v1/ayah/](https://api.alquran.cloud/v1/ayah/){surah_num}:{a}/{reciter_info['id']}", headers=req_headers, timeout=15)
+                if req.status_code == 200:
+                    res = req.json()
+                    temp_data = res.get("data")
+                    if isinstance(temp_data, dict) and "audio" in temp_data and "text" in temp_data:
+                        data = temp_data
+                        break
+            except Exception:
+                time.sleep(2)
                 
-            res = req.json()
-            data = res.get("data")
+        if not data:
+            print(f"⚠️ تخطي الآية {a} لعدم استجابة السيرفر بعد 3 محاولات.", flush=True)
+            continue
             
-            # حماية النظام من خطأ String Indices
-            if not isinstance(data, dict) or "audio" not in data or "text" not in data:
-                print(f"⚠️ بيانات الآية {a} غير مكتملة أو تالفة، تم التخطي.", flush=True)
-                continue
-                
+        try:
             aud_file = f"aud_{a}_{tag}.mp3"
             with open(aud_file, "wb") as f: 
-                f.write(requests.get(data["audio"], timeout=30).content)
+                f.write(requests.get(data["audio"], headers=req_headers, timeout=30).content)
             temp_files.append(aud_file)
             
             text = clean_arabic(data["text"])
@@ -193,7 +213,7 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
 def upload_files(video_file):
     try:
         with open(video_file, "rb") as f:
-            r = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=120)
+            r = requests.post("[https://catbox.moe/user/api.php](https://catbox.moe/user/api.php)", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=120)
             if r.status_code == 200 and r.text.startswith("http"): return r.text.strip()
     except: return None
 
@@ -201,24 +221,24 @@ def post_to_dailymotion(video_file, title, description, tags):
     api_key = os.getenv("DAILYMOTION_KEY", "").strip()
     if not api_key: return None
     try:
-        token_res = requests.post("https://api.dailymotion.com/oauth/token", data={"grant_type": "password", "client_id": api_key, "client_secret": os.getenv("DAILYMOTION_SECRET"), "username": os.getenv("DAILYMOTION_USERNAME"), "password": os.getenv("DAILYMOTION_PASSWORD"), "scope": "manage_videos"}).json()
+        token_res = requests.post("[https://api.dailymotion.com/oauth/token](https://api.dailymotion.com/oauth/token)", data={"grant_type": "password", "client_id": api_key, "client_secret": os.getenv("DAILYMOTION_SECRET"), "username": os.getenv("DAILYMOTION_USERNAME"), "password": os.getenv("DAILYMOTION_PASSWORD"), "scope": "manage_videos"}).json()
         headers = {"Authorization": f"Bearer {token_res.get('access_token')}"}
-        up_url = requests.get("https://api.dailymotion.com/file/upload", headers=headers).json().get("upload_url")
+        up_url = requests.get("[https://api.dailymotion.com/file/upload](https://api.dailymotion.com/file/upload)", headers=headers).json().get("upload_url")
         with open(video_file, "rb") as f: file_url = requests.post(up_url, files={"file": f}).json().get("url")
-        vid_id = requests.post("https://api.dailymotion.com/me/videos", headers=headers, data={"url": file_url, "title": title[:250], "description": description, "tags": tags, "published": "true"}).json().get("id")
-        return f"https://www.dailymotion.com/video/{vid_id}" if vid_id else None
+        vid_id = requests.post("[https://api.dailymotion.com/me/videos](https://api.dailymotion.com/me/videos)", headers=headers, data={"url": file_url, "title": title[:250], "description": description, "tags": tags, "published": "true"}).json().get("id")
+        return f"[https://www.dailymotion.com/video/](https://www.dailymotion.com/video/){vid_id}" if vid_id else None
     except: return None
 
 def notify_telegram(message):
     try:
-        requests.post(f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage", json={"chat_id": os.getenv("ADMIN_CHAT_ID"), "text": message, "parse_mode": "HTML"})
+        requests.post(f"[https://api.telegram.org/bot](https://api.telegram.org/bot){os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage", json={"chat_id": os.getenv("ADMIN_CHAT_ID"), "text": message, "parse_mode": "HTML"})
     except: pass
 
 # ----------------- تشغيل المنظومة الرئيسية -----------------
 if __name__ == "__main__":
     reciter = random.choice(RECITERS_POOL)
     
-    surahs = requests.get("https://api.alquran.cloud/v1/meta").json()["data"]["surahs"]["references"]
+    surahs = requests.get("[https://api.alquran.cloud/v1/meta](https://api.alquran.cloud/v1/meta)").json()["data"]["surahs"]["references"]
     surah = random.choice([s for s in surahs if s["numberOfAyahs"] >= 3 and s["number"] != 18])
     start_a = random.randint(1, max(1, surah["numberOfAyahs"] - 2))
     end_a = min(surah["numberOfAyahs"], start_a + 2)
