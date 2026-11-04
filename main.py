@@ -21,14 +21,14 @@ from moviepy.editor import (
 HISTORY_FILE = "history_shorts_all.json"
 QURAN_FONT_URL = "https://" + "cdn.jsdelivr.net" + "/gh/google/fonts@main/ofl/amiri/Amiri-Regular.ttf"
 
-# أضفنا مسارات السيرفر الاحتياطي لكل قارئ
 RECITERS_POOL = [
     {"name": "محمد صديق المنشاوي", "id": "ar.minshawi", "everyayah": "Minshawy_Murattal_128kbps"},
     {"name": "ياسر الدوسري", "id": "ar.yasseraldossari", "everyayah": "Yasser_Ad-Dussary_128kbps"}
 ]
 
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
-    api_key = os.getenv("OPENAI_API_KEY", "").strip() 
+    # تم تغيير اسم السيكرت هنا ليقرأ OPENROUTER_API_KEY
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip() 
     if not api_key:
         return "dark cinematic rain street", f"تلاوة خاشعة | سورة {surah_name}", "#القرآن #shorts"
 
@@ -191,7 +191,6 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             aud_file = f"aud_{a}_{tag}.mp3"
             global_ayah_num = ayah_item.get("number", 1)
             
-            # قائمة مصادر الصوت للآية (السيرفر الأساسي + السيرفر الاحتياطي الجديد)
             audio_sources = [
                 ayah_item.get("audio"),
                 ayah_item.get("audioSecondary"),
@@ -204,7 +203,6 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
                 if not src_url: continue
                 try:
                     req_aud = requests.get(src_url, headers=req_headers, timeout=15)
-                    # التأكد أن الملف تم تحميله بنجاح وأن حجمه أكبر من 5 كيلوبايت (ليس صفحة HTML وهمية)
                     if req_aud.status_code == 200 and len(req_aud.content) > 5000:
                         with open(aud_file, "wb") as f: 
                             f.write(req_aud.content)
