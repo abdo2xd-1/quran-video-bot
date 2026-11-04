@@ -28,7 +28,6 @@ RECITERS_POOL = [
 
 # ----------------- عقل الذكاء الاصطناعي (OpenRouter AI) -----------------
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
-    # نستخدم نفس اسم المتغير حتى لا تضطر لتعديل ملف run.yml
     api_key = os.getenv("OPENAI_API_KEY", "").strip() 
     if not api_key:
         return "dark cinematic rain street", f"تلاوة خاشعة | سورة {surah_name}", "#القرآن #shorts"
@@ -61,7 +60,6 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
         res.raise_for_status()
         raw_text = res.json()['choices'][0]['message']['content'].strip()
         
-        # تنظيف الرد إذا كان يحتوي على علامات Markdown
         if "```json" in raw_text:
             raw_text = raw_text.split("```json")[1].split("```")[0].strip()
         elif "```" in raw_text:
@@ -209,7 +207,6 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             except: pass
     return out_file
 
-# ----------------- بقية دوال الرفع والنشر -----------------
 def upload_files(video_file):
     try:
         with open(video_file, "rb") as f:
@@ -234,10 +231,10 @@ def notify_telegram(message):
         requests.post(f"[https://api.telegram.org/bot](https://api.telegram.org/bot){os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage", json={"chat_id": os.getenv("ADMIN_CHAT_ID"), "text": message, "parse_mode": "HTML"})
     except: pass
 
-# ----------------- تشغيل المنظومة الرئيسية -----------------
 if __name__ == "__main__":
     reciter = random.choice(RECITERS_POOL)
     
+    # الجلب الصحيح بقيمة الرابط النظيفة
     surahs = requests.get("[https://api.alquran.cloud/v1/meta](https://api.alquran.cloud/v1/meta)").json()["data"]["surahs"]["references"]
     surah = random.choice([s for s in surahs if s["numberOfAyahs"] >= 3 and s["number"] != 18])
     start_a = random.randint(1, max(1, surah["numberOfAyahs"] - 2))
