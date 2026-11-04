@@ -143,7 +143,6 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
         data = None
         for attempt in range(3):
             try:
-                # تكوين رابط الآية ديناميكياً لتجنب أي ماركداون
                 ayah_url = "https://" + "api.alquran.cloud" + f"/v1/ayah/{surah_num}:{a}/{reciter_info['id']}"
                 req = requests.get(ayah_url, headers=req_headers, timeout=15)
                 if req.status_code == 200:
@@ -234,12 +233,8 @@ def notify_telegram(message):
 if __name__ == "__main__":
     reciter = random.choice(RECITERS_POOL)
     
-    # بناء الرابط بطريقة مركبة لتجنب أي أقواس ماركداون نهائياً
-    domain = "api.alquran.cloud"
-    endpoint = "/v1/meta"
-    safe_meta_url = "https://" + domain + endpoint
-    
-    surahs = requests.get(safe_meta_url).json()["data"]["surahs"]["references"]
+    meta_url = "https://" + "api.alquran.cloud" + "/v1/meta"
+    surahs = requests.get(meta_url).json()["data"]["surahs"]["references"]
     surah = random.choice([s for s in surahs if s["numberOfAyahs"] >= 3 and s["number"] != 18])
     start_a = random.randint(1, max(1, surah["numberOfAyahs"] - 2))
     end_a = min(surah["numberOfAyahs"], start_a + 2)
