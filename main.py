@@ -21,9 +21,10 @@ from moviepy.editor import (
 HISTORY_FILE = "history_shorts_all.json"
 QURAN_FONT_URL = "https://" + "cdn.jsdelivr.net" + "/gh/google/fonts@main/ofl/amiri/Amiri-Regular.ttf"
 
+# أضفنا مسارات السيرفر الاحتياطي لكل قارئ
 RECITERS_POOL = [
-    {"name": "محمد صديق المنشاوي", "id": "ar.minshawi"},
-    {"name": "ياسر الدوسري", "id": "ar.yasseraldossari"}
+    {"name": "محمد صديق المنشاوي", "id": "ar.minshawi", "everyayah": "Minshawy_Murattal_128kbps"},
+    {"name": "ياسر الدوسري", "id": "ar.yasseraldossari", "everyayah": "Yasser_Ad-Dussary_128kbps"}
 ]
 
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
@@ -187,14 +188,34 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             continue
             
         try:
-            audio_url = ayah_item.get("audio")
-            if not audio_url:
-                global_ayah_num = ayah_item.get("number", 1)
-                audio_url = "https://" + "cdn.islamic.network" + f"/quran/audio/128/{reciter_info['id']}/{global_ayah_num}.mp3"
-
             aud_file = f"aud_{a}_{tag}.mp3"
-            with open(aud_file, "wb") as f: 
-                f.write(requests.get(audio_url, headers=req_headers, timeout=30).content)
+            global_ayah_num = ayah_item.get("number", 1)
+            
+            # قائمة مصادر الصوت للآية (السيرفر الأساسي + السيرفر الاحتياطي الجديد)
+            audio_sources = [
+                ayah_item.get("audio"),
+                ayah_item.get("audioSecondary"),
+                "https://" + "cdn.islamic.network" + f"/quran/audio/128/{reciter_info['id']}/{global_ayah_num}.mp3",
+                "https://" + "everyayah.com" + f"/data/{reciter_info['everyayah']}/{str(surah_num).zfill(3)}{str(a).zfill(3)}.mp3"
+            ]
+            
+            audio_downloaded = False
+            for src_url in audio_sources:
+                if not src_url: continue
+                try:
+                    req_aud = requests.get(src_url, headers=req_headers, timeout=15)
+                    # التأكد أن الملف تم تحميله بنجاح وأن حجمه أكبر من 5 كيلوبايت (ليس صفحة HTML وهمية)
+                    if req_aud.status_code == 200 and len(req_aud.content) > 5000:
+                        with open(aud_file, "wb") as f: 
+                            f.write(req_aud.content)
+                        audio_downloaded = True
+                        break
+                except Exception:
+                    pass
+                    
+            if not audio_downloaded:
+                raise Exception("توقف تحميل الصوت بسبب الحظر.")
+
             temp_files.append(aud_file)
             
             text = clean_arabic(ayah_item.get("text", ""))
