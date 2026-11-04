@@ -54,6 +54,7 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git checkout -- Amiri-Regular.ttf || rm -f Amiri-Regular.ttf
         git add history_shorts_all.json surahs_114_meta.json || true
         git commit -m "Auto-update quran shorts history [skip ci]" || echo "No changes to commit"
         git push || true
