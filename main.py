@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import time
-import uuid
 import base64
 import random
 import shutil
@@ -14,7 +13,6 @@ import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = getattr(PIL.Image, 'LANCZOS', getattr(PIL.Image, 'Resampling', None).LANCZOS if hasattr(PIL.Image, 'Resampling') else None)
 
-from PIL import Image
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, 
     CompositeVideoClip, ColorClip, concatenate_audioclips, concatenate_videoclips
@@ -96,7 +94,6 @@ def prepare_ai_background(bg_query, tag):
     except Exception:
         pass
 
-    # إذا فشل Pexels، يتم تحميل خلفية المطر الافتراضية
     if not success or not os.path.exists(raw_bg):
         print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية...", flush=True)
         fallback_url = "https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4"
@@ -131,26 +128,44 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
 
     print("📥 سحب وضبط تزامن الآيات برمجياً...", flush=True)
     for a in range(start_a, end_a + 1):
-        res = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/{reciter_info['id']}").json()
-        data = res.get("data", {})
-        if not data: continue
-        
-        aud_file = f"aud_{a}_{tag}.mp3"
-        with open(aud_file, "wb") as f: f.write(requests.get(data["audio"]).content)
-        temp_files.append(aud_file)
-        
-        text = clean_arabic(data["text"])
-        if a == 1 and surah_num != 1: text = text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
-        
-        a_clip = AudioFileClip(aud_file)
-        mins, secs = int(current_time // 60), int(current_time % 60)
-        
-        frame_path = render_lower_verse_frame(f"{text} ﴿{to_arabic_num(a)}﴾", f"{mins:02d}:{secs:02d}", f"{a}_{tag}", font_b64)
-        temp_files.append(frame_path)
-        
-        audio_clips.append(a_clip)
-        video_clips.append(ImageClip(frame_path).set_duration(a_clip.duration))
-        current_time += a_clip.duration
+        try:
+            req = requests.get(f"https://api.alquran.cloud/v1/ayah/{surah_num}:{a}/{reciter_info['id']}", timeout=15)
+            if req.status_code != 200:
+                print(f"⚠️ تخطي الآية {a} لعدم استجابة السيرفر.", flush=True)
+                continue
+                
+            res = req.json()
+            data = res.get("data")
+            
+            # حماية النظام من خطأ String Indices
+            if not isinstance(data, dict) or "audio" not in data or "text" not in data:
+                print(f"⚠️ بيانات الآية {a} غير مكتملة أو تالفة، تم التخطي.", flush=True)
+                continue
+                
+            aud_file = f"aud_{a}_{tag}.mp3"
+            with open(aud_file, "wb") as f: 
+                f.write(requests.get(data["audio"], timeout=30).content)
+            temp_files.append(aud_file)
+            
+            text = clean_arabic(data["text"])
+            if a == 1 and surah_num != 1: text = text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").strip()
+            
+            a_clip = AudioFileClip(aud_file)
+            mins, secs = int(current_time // 60), int(current_time % 60)
+            
+            frame_path = render_lower_verse_frame(f"{text} ﴿{to_arabic_num(a)}﴾", f"{mins:02d}:{secs:02d}", f"{a}_{tag}", font_b64)
+            temp_files.append(frame_path)
+            
+            audio_clips.append(a_clip)
+            video_clips.append(ImageClip(frame_path).set_duration(a_clip.duration))
+            current_time += a_clip.duration
+            
+        except Exception as e:
+            print(f"⚠️ خطأ في معالجة الآية {a}: {e}", flush=True)
+            continue
+
+    if not audio_clips:
+        raise Exception("❌ لم يتم جلب أي آيات بنجاح بسبب خلل في سيرفرات القرآن.")
 
     final_audio = concatenate_audioclips(audio_clips)
     tot_dur = final_audio.duration
@@ -169,10 +184,12 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
     main_video.write_videofile(out_file, fps=30, codec="libx264", audio_codec="aac", bitrate="6000k", threads=4, preset="medium")
     
     for tf in temp_files:
-        if os.path.exists(tf): os.remove(tf)
+        if os.path.exists(tf): 
+            try: os.remove(tf)
+            except: pass
     return out_file
 
-# ----------------- بقية دوال الرفع والنشر (كما هي) -----------------
+# ----------------- بقية دوال الرفع والنشر -----------------
 def upload_files(video_file):
     try:
         with open(video_file, "rb") as f:
@@ -201,22 +218,22 @@ def notify_telegram(message):
 if __name__ == "__main__":
     reciter = random.choice(RECITERS_POOL)
     
-    # اختيار عشوائي للآيات
     surahs = requests.get("https://api.alquran.cloud/v1/meta").json()["data"]["surahs"]["references"]
-    surah = random.choice([s for s in surahs if s["numberOfAyahs"] >= 3 and s["number"] != 18]) # استبعاد الكهف للأيام العادية
+    surah = random.choice([s for s in surahs if s["numberOfAyahs"] >= 3 and s["number"] != 18])
     start_a = random.randint(1, max(1, surah["numberOfAyahs"] - 2))
     end_a = min(surah["numberOfAyahs"], start_a + 2)
     tag = f"ai_vid_{int(time.time())}"
 
     print(f"🤖 الذكاء الاصطناعي بدأ العمل على سورة {surah['name']}...", flush=True)
     
-    # 1. إعطاء الأمر للمخرج (OpenAI)
     bg_query, yt_title, caption = generate_ai_director_plan(surah["name"], start_a, end_a, reciter["name"])
     
-    # 2. توليد الفيديو بناءً على قرار الـ AI وبضمان التزامن
-    vid_file = build_ai_video(surah["number"], surah["name"], start_a, end_a, reciter, bg_query, tag)
+    try:
+        vid_file = build_ai_video(surah["number"], surah["name"], start_a, end_a, reciter, bg_query, tag)
+    except Exception as e:
+        print(e, flush=True)
+        sys.exit(1)
     
-    # 3. النشر التلقائي
     pub_url = upload_files(vid_file)
     dm_link = post_to_dailymotion(vid_file, yt_title, caption, "quran,islam,shorts")
     
