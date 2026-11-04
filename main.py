@@ -18,6 +18,7 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip, concatenate_audioclips, concatenate_videoclips
 )
 
+HISTORY_FILE = "history_shorts_all.json"
 QURAN_FONT_URL = "https://" + "cdn.jsdelivr.net" + "/gh/google/fonts@main/ofl/amiri/Amiri-Regular.ttf"
 
 RECITERS_POOL = [
