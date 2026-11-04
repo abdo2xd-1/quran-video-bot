@@ -27,12 +27,6 @@ RECITERS_POOL = [
 ]
 
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
-    # تم تغيير اسم السيكرت هنا ليقرأ OPENROUTER_API_KEY
-    api_key = os.getenv("OPENROUTER_API_KEY", "").strip() 
-    if not api_key:
-        return "dark cinematic rain street", f"تلاوة خاشعة | سورة {surah_name}", "#القرآن #shorts"
-
-    url = "https://" + "openrouter.ai" + "/api/v1/chat/completions"
     prompt = f"""
     أنت مخرج سينمائي وخبير يوتيوب SEO إسلامي. المقطع الحالي: سورة {surah_name} (الآيات {start_a} إلى {end_a}) بصوت {reciter_name}.
     المطلوب منك 3 أشياء بصيغة JSON فقط:
@@ -42,41 +36,31 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     لا تكتب أي شيء خارج الـ JSON.
     """
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://" + "github.com",
-        "X-Title": "QuranBot"
+    # استخدام ذكاء اصطناعي مجاني ومفتوح بالكامل لا يحتاج لأي مفاتيح أو حسابات
+    url = "https://" + "text.pollinations.ai" + "/"
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "model": "llama", 
+        "jsonMode": True,
+        "temperature": 0.7
     }
-    
-    free_models = [
-        "google/gemini-2.0-flash-lite-preview-02-05:free",
-        "qwen/qwen-2-7b-instruct:free",
-        "meta-llama/llama-3-8b-instruct:free",
-        "mistralai/mistral-7b-instruct:free"
-    ]
 
-    for model_name in free_models:
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7
-        }
-        try:
-            res = requests.post(url, headers=headers, json=payload, timeout=20)
-            if res.status_code == 200:
-                raw_text = res.json()['choices'][0]['message']['content'].strip()
-                if "```json" in raw_text:
-                    raw_text = raw_text.split("```json")[1].split("```")[0].strip()
-                elif "```" in raw_text:
-                    raw_text = raw_text.split("```")[1].strip()
-                    
-                content = json.loads(raw_text)
-                return content.get("bg_query", "cinematic dark rain"), content.get("title", f"تلاوة خاشعة | سورة {surah_name}"), content.get("description", f"#القرآن_الكريم #سورة_{surah_name}")
-        except Exception:
-            continue
+    try:
+        res = requests.post(url, json=payload, timeout=30)
+        if res.status_code == 200:
+            raw_text = res.text.strip()
+            
+            if "```json" in raw_text:
+                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw_text:
+                raw_text = raw_text.split("```")[1].strip()
+                
+            content = json.loads(raw_text)
+            return content.get("bg_query", "cinematic dark rain"), content.get("title", f"تلاوة خاشعة | سورة {surah_name}"), content.get("description", f"#القرآن_الكريم #سورة_{surah_name}")
+    except Exception as e:
+        print(f"⚠️ فشل الذكاء الاصطناعي المفتوح: {e}", flush=True)
 
-    print("⚠️ فشلت كل النماذج، تفعيل الوضع الافتراضي", flush=True)
+    print("⚠️ تفعيل الوضع الافتراضي", flush=True)
     return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name} 🤍", f"#القرآن_الكريم #سورة_{surah_name}"
 
 def clean_arabic(text):
