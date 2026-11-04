@@ -48,7 +48,6 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
         "X-Title": "QuranBot"
     }
     
-    # قائمة نماذج مجانية كبدائل لتفادي خطأ 404
     free_models = [
         "google/gemini-2.0-flash-lite-preview-02-05:free",
         "qwen/qwen-2-7b-instruct:free",
@@ -74,9 +73,8 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
                 content = json.loads(raw_text)
                 return content.get("bg_query", "cinematic dark rain"), content.get("title", f"تلاوة خاشعة | سورة {surah_name}"), content.get("description", f"#القرآن_الكريم #سورة_{surah_name}")
         except Exception:
-            continue # إذا فشل النموذج الحالي، جرب الذي يليه
+            continue
 
-    # إذا فشلت كل النماذج
     print("⚠️ فشلت كل النماذج، تفعيل الوضع الافتراضي", flush=True)
     return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name} 🤍", f"#القرآن_الكريم #سورة_{surah_name}"
 
@@ -189,12 +187,18 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             continue
             
         try:
+            # الحل الذكي: إذا نسى الـ API إرسال الرابط، سنقوم ببنائه يدوياً من السيرفر الأساسي
+            audio_url = ayah_item.get("audio")
+            if not audio_url:
+                global_ayah_num = ayah_item.get("number", 1)
+                audio_url = f"[https://cdn.islamic.network/quran/audio/128/](https://cdn.islamic.network/quran/audio/128/){reciter_info['id']}/{global_ayah_num}.mp3"
+
             aud_file = f"aud_{a}_{tag}.mp3"
             with open(aud_file, "wb") as f: 
-                f.write(requests.get(ayah_item["audio"], headers=req_headers, timeout=30).content)
+                f.write(requests.get(audio_url, headers=req_headers, timeout=30).content)
             temp_files.append(aud_file)
             
-            text = clean_arabic(ayah_item["text"])
+            text = clean_arabic(ayah_item.get("text", ""))
             if a == 1 and surah_num != 1: 
                 text = text.replace("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "").replace("بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", "").strip()
             
