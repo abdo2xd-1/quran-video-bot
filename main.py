@@ -49,7 +49,7 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     }
     
     payload = {
-        "model": "google/gemma-2-9b-it:free", # نموذج مجاني ومستقر جداً على OpenRouter
+        "model": "google/gemma-2-9b-it:free",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7
     }
@@ -87,7 +87,7 @@ def prepare_ai_background(bg_query, tag):
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"ready_bg_{tag}.mp4"
     
-    print(f"🎬 المخرج (AI) طلب خلفية بنمط: '{bg_query}'... جاري البحث في Pexels", flush=True)
+    print(f"🎬 المخرج (AI) طلب خلفية بنمط: '{bg_query}'... جاري البحث", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     p_headers = {"Authorization": pexels_key} if pexels_key else {}
     success = False
@@ -100,15 +100,29 @@ def prepare_ai_background(bg_query, tag):
             v = random.choice(videos)
             hd_file = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]
             with open(raw_bg, "wb") as f: f.write(requests.get(hd_file.get("link"), timeout=60).content)
-            success = True
+            if os.path.getsize(raw_bg) > 100000:
+                success = True
     except Exception:
         pass
 
-    if not success or not os.path.exists(raw_bg):
-        print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية...", flush=True)
-        # بناء الرابط الاحتياطي ديناميكياً لتجنب أي أخطاء ماركداون
-        fallback_url = "https://" + "videos.pexels.com" + "/video-files/2491294/2491294-hd_1080_1920_30fps.mp4"
-        with open(raw_bg, "wb") as f: f.write(requests.get(fallback_url, timeout=60).content)
+    if not success:
+        print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية الموثوقة...", flush=True)
+        fallback_url = "[https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4](https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4)"
+        try:
+            with open(raw_bg, "wb") as f: f.write(requests.get(fallback_url, timeout=60).content)
+            if os.path.getsize(raw_bg) > 100000:
+                success = True
+        except Exception:
+            pass
+
+    if not success:
+        print("⚠️ فشل تحميل الخلفيات بالكامل، جاري توليد خلفية لونية برمجياً لتفادي الانهيار...", flush=True)
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#080d14:s=1080x1920:d=60",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", fast_bg
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(raw_bg): os.remove(raw_bg)
+        return fast_bg
 
     subprocess.run([
         "ffmpeg", "-y", "-i", raw_bg,
