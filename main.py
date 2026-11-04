@@ -234,7 +234,7 @@ def notify_telegram(message):
 if __name__ == "__main__":
     reciter = random.choice(RECITERS_POOL)
     
-    # الجلب الصحيح بقيمة الرابط النظيفة
+    # رابط نظيف وخالٍ تماماً من علامات الماركداون
     surahs = requests.get("[https://api.alquran.cloud/v1/meta](https://api.alquran.cloud/v1/meta)").json()["data"]["surahs"]["references"]
     surah = random.choice([s for s in surahs if s["numberOfAyahs"] >= 3 and s["number"] != 18])
     start_a = random.randint(1, max(1, surah["numberOfAyahs"] - 2))
