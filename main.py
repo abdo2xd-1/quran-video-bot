@@ -28,10 +28,9 @@ RECITERS_POOL = [
 def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        print("⚠️ مفتاح GEMINI_API_KEY غير موجود.", flush=True)
+        print("⚠️ مفتاح GEMINI_API_KEY غير موجود، استخدام الوضع الافتراضي.", flush=True)
         return "dark cinematic rain", f"تلاوة خاشعة | سورة {surah_name}", f"#القرآن_الكريم #سورة_{surah_name}"
 
-    # استخدام أحدث نموذج مستقر من جوجل
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
     prompt = f"""
@@ -106,7 +105,7 @@ def prepare_ai_background(bg_query, tag):
         pass
 
     if not success:
-        print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية الموثوقة...", flush=True)
+        print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية...", flush=True)
         fallback_url = "https://" + "assets.mixkit.co" + "/videos/preview/mixkit-stars-in-space-1610-large.mp4"
         try:
             with open(raw_bg, "wb") as f: f.write(requests.get(fallback_url, timeout=60).content)
@@ -116,7 +115,7 @@ def prepare_ai_background(bg_query, tag):
             pass
 
     if not success:
-        print("⚠️ فشل تحميل الخلفيات بالكامل، جاري توليد خلفية لونية برمجياً لتفادي الانهيار...", flush=True)
+        print("⚠️ توليد خلفية لونية برمجياً...", flush=True)
         subprocess.run([
             "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#080d14:s=1080x1920:d=60",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", fast_bg
@@ -151,7 +150,7 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
     audio_clips, video_clips, temp_files = [], [], []
     current_time = 0.0
 
-    print("📥 سحب السورة كاملة بطلب واحد لتفادي الحظر...", flush=True)
+    print("📥 سحب السورة كاملة...", flush=True)
     req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     surah_url = "https://" + "api.alquran.cloud" + f"/v1/surah/{surah_num}/{reciter_info['id']}"
@@ -168,14 +167,13 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             time.sleep(2)
             
     if not surah_data:
-        raise Exception("❌ لم يتم جلب بيانات السورة بسبب حظر السيرفر المستمر.")
+        raise Exception("❌ لم يتم جلب بيانات السورة.")
     
-    print("✂️ جاري قص وضبط تزامن الآيات المطلوبة...", flush=True)
+    print("✂️ جاري قص وضبط تزامن الآيات...", flush=True)
     for a in range(start_a, end_a + 1):
         ayah_item = next((item for item in surah_data if item["numberInSurah"] == a), None)
         
         if not ayah_item:
-            print(f"⚠️ الآية {a} غير موجودة في البيانات المجلوبة.", flush=True)
             continue
             
         try:
@@ -203,7 +201,7 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
                     pass
                     
             if not audio_downloaded:
-                raise Exception("توقف تحميل الصوت بسبب الحظر.")
+                raise Exception("فشل تحميل الصوت.")
 
             temp_files.append(aud_file)
             
@@ -222,11 +220,11 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
             current_time += a_clip.duration
             
         except Exception as e:
-            print(f"⚠️ خطأ في معالجة الآية {a}: {e}", flush=True)
+            print(f"⚠️ خطأ في الآية {a}: {e}", flush=True)
             continue
 
     if not audio_clips:
-        raise Exception("❌ فشلت عملية المزامنة ولم يتم معالجة أي آية.")
+        raise Exception("❌ لم يتم معالجة أي آية.")
 
     final_audio = concatenate_audioclips(audio_clips)
     tot_dur = final_audio.duration
@@ -251,35 +249,56 @@ def build_ai_video(surah_num, surah_name, start_a, end_a, reciter_info, bg_query
     return out_file
 
 def upload_files(video_file):
+    print("☁️ جاري رفع الفيديو للحصول على رابط مباشر...", flush=True)
     try:
         with open(video_file, "rb") as f:
             up_url = "https://" + "catbox.moe" + "/user/api.php"
             r = requests.post(up_url, data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=120)
-            if r.status_code == 200 and r.text.startswith("http"): return r.text.strip()
-    except: return None
+            if r.status_code == 200 and r.text.startswith("http"):
+                link = r.text.strip()
+                print(f"✅ تم الرفع بنجاح: {link}", flush=True)
+                return link
+    except Exception as e:
+        print(f"⚠️ خطأ في الرفع: {e}", flush=True)
+    return None
 
-def post_to_dailymotion(video_file, title, description, tags):
-    api_key = os.getenv("DAILYMOTION_KEY", "").strip()
-    if not api_key: return None
+def post_to_buffer(video_url, text_content):
+    token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
+    channel_id = os.getenv("BUFFER_CHANNEL_ID", "").strip()
+    
+    if not token or not channel_id:
+        print("⚠️ بيانات Buffer (Token أو Channel ID) غير متوفرة.", flush=True)
+        return False
+        
+    print("📢 جاري النشر عبر Buffer...", flush=True)
     try:
-        dm_token_url = "https://" + "api.dailymotion.com" + "/oauth/token"
-        token_res = requests.post(dm_token_url, data={"grant_type": "password", "client_id": api_key, "client_secret": os.getenv("DAILYMOTION_SECRET"), "username": os.getenv("DAILYMOTION_USERNAME"), "password": os.getenv("DAILYMOTION_PASSWORD"), "scope": "manage_videos"}).json()
-        headers = {"Authorization": f"Bearer {token_res.get('access_token')}"}
-        
-        dm_up_url = "https://" + "api.dailymotion.com" + "/file/upload"
-        up_url = requests.get(dm_up_url, headers=headers).json().get("upload_url")
-        with open(video_file, "rb") as f: file_url = requests.post(up_url, files={"file": f}).json().get("url")
-        
-        dm_pub_url = "https://" + "api.dailymotion.com" + "/me/videos"
-        vid_id = requests.post(dm_pub_url, headers=headers, data={"url": file_url, "title": title[:250], "description": description, "tags": tags, "published": "true"}).json().get("id")
-        return "https://" + "[www.dailymotion.com](https://www.dailymotion.com)" + f"/video/{vid_id}" if vid_id else None
-    except: return None
+        url = "https://" + "api.bufferapp.com" + "/1/updates/create.json"
+        payload = {
+            "access_token": token,
+            "profile_ids[]": channel_id,
+            "text": text_content,
+            "media[video]": video_url
+        }
+        res = requests.post(url, data=payload, timeout=30)
+        if res.status_code == 200 and res.json().get("success"):
+            print("✅ تم النشر عبر Buffer بنجاح!", flush=True)
+            return True
+        else:
+            print(f"⚠️ فشل النشر عبر Buffer: {res.text}", flush=True)
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بـ Buffer: {e}", flush=True)
+    return False
 
 def notify_telegram(message):
+    token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+    chat_id = os.getenv('ADMIN_CHAT_ID', '').strip()
+    if not token or not chat_id:
+        return
     try:
-        tg_url = "https://" + "api.telegram.org" + f"/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage"
-        requests.post(tg_url, json={"chat_id": os.getenv("ADMIN_CHAT_ID"), "text": message, "parse_mode": "HTML"})
-    except: pass
+        tg_url = "https://" + "api.telegram.org" + f"/bot{token}/sendMessage"
+        requests.post(tg_url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"})
+    except:
+        pass
 
 if __name__ == "__main__":
     reciter = random.choice(RECITERS_POOL)
@@ -301,10 +320,16 @@ if __name__ == "__main__":
         print(e, flush=True)
         sys.exit(1)
     
-    pub_url = upload_files(vid_file)
-    dm_link = post_to_dailymotion(vid_file, yt_title, caption, "quran,islam,shorts")
+    # رفع الفيديو للحصول على رابط مباشر
+    video_url = upload_files(vid_file)
     
-    report = f"✨ <b>الذكاء الاصطناعي أتم المهمة بنجاح!</b>\n\n📖 <b>السورة:</b> {surah['name']} ({start_a}-{end_a})\n🎙️ <b>القارئ:</b> {reciter['name']}\n🧠 <b>بحث الخلفية:</b> <code>{bg_query}</code>\n📝 <b>العنوان:</b> {yt_title}\n\n🔗 <b>رابط التحميل:</b> <a href='{pub_url}'>هنا</a>\n📺 <b>ديلي موشن:</b> <a href='{dm_link}'>هنا</a>"
+    buffer_success = False
+    if video_url:
+        full_post_text = f"{yt_title}\n\n{caption}\n\n شاهد الفيديو: {video_url}"
+        buffer_success = post_to_buffer(video_url, full_post_text)
+    
+    report = f"✨ <b>الذكاء الاصطناعي أتم المهمة بنجاح!</b>\n\n📖 <b>السورة:</b> {surah['name']} ({start_a}-{end_a})\n🎙️ <b>القارئ:</b> {reciter['name']}\n📝 <b>العنوان:</b> {yt_title}\n\n🔗 <b>رابط الفيديو:</b> <a href='{video_url}'>هنا</a>\n🚀 <b>حالة النشر عبر Buffer:</b> {'تم النشر بنجاح ✅' if buffer_success else 'فشل النشر ❌'}"
     notify_telegram(report)
     
     if os.path.exists(vid_file): os.remove(vid_file)
+    print("🎉 تمت العملية بالكامل بنجاح!", flush=True)
