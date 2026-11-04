@@ -49,7 +49,7 @@ def generate_ai_director_plan(surah_name, start_a, end_a, reciter_name):
     }
     
     payload = {
-        "model": "meta-llama/llama-3-8b-instruct:free",
+        "model": "google/gemma-2-9b-it:free", # نموذج مجاني ومستقر جداً على OpenRouter
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7
     }
@@ -106,7 +106,8 @@ def prepare_ai_background(bg_query, tag):
 
     if not success or not os.path.exists(raw_bg):
         print("⚠️ فشل جلب فيديو من Pexels، جاري استخدام الخلفية الاحتياطية...", flush=True)
-        fallback_url = "[https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4](https://videos.pexels.com/video-files/2491294/2491294-hd_1080_1920_30fps.mp4)"
+        # بناء الرابط الاحتياطي ديناميكياً لتجنب أي أخطاء ماركداون
+        fallback_url = "https://" + "videos.pexels.com" + "/video-files/2491294/2491294-hd_1080_1920_30fps.mp4"
         with open(raw_bg, "wb") as f: f.write(requests.get(fallback_url, timeout=60).content)
 
     subprocess.run([
