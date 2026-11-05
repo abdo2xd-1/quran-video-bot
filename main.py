@@ -57,7 +57,6 @@ def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
                     f.write(r.content)
                 
                 clip = AudioFileClip(file_name)
-                # قص الفراغات الصامتة لربط الصوت بسلاسة
                 if clip.duration > 0.6:
                     clip = clip.subclip(0.15, clip.duration - 0.25)
                 clips.append(clip)
@@ -170,7 +169,6 @@ def upload_files(video_file):
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     
-    # 1. محاولة الرفع عبر GitHub Releases (الأكثر استقراراً)
     if repo and gh_token:
         tag_name = f"v-short-{int(time.time()*1000)}"
         try:
@@ -182,7 +180,6 @@ def upload_files(video_file):
             if "upload_url" in res:
                 u_url = res["upload_url"].split("{")[0]
                 with open(video_file, "rb") as vf:
-                    # زيادة وقت الانتظار إلى 300 ثانية
                     up_res = requests.post(f"{u_url}?name=video.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=300).json()
                 browser_url = up_res.get("browser_download_url")
                 if browser_url:
@@ -191,7 +188,6 @@ def upload_files(video_file):
         except Exception as e:
             print(f"⚠️ فشل الرفع عبر GitHub: {e}", flush=True)
 
-    # 2. محاولة الرفع عبر سيرفر uguu.se (سيرفر قوي ومستقر)
     try:
         print("🔄 جاري محاولة الرفع عبر خادم uguu.se...", flush=True)
         with open(video_file, "rb") as f:
@@ -203,7 +199,6 @@ def upload_files(video_file):
     except Exception as e:
         print(f"⚠️ فشل الرفع عبر Uguu: {e}", flush=True)
 
-    # 3. محاولة الرفع عبر Catbox كملاذ أخير
     try:
         print("🔄 جاري محاولة الرفع عبر خادم Catbox...", flush=True)
         with open(video_file, "rb") as f:
@@ -241,12 +236,14 @@ def post_to_buffer(video_url, yt_title, caption):
             "text": caption, 
             "mode": "shareNow", 
             "schedulingType": "automatic",
-            "assets": [{"video": {"url": video_url}}],
-            "metadata": {
-                "youtube": {"title": yt_title[:95], "categoryId": "27"},
-                "instagram": {"type": "reel", "shouldShareToFeed": True}
-            }
+            "assets": [{"video": {"url": video_url}}]
         }
+
+        # فصل البيانات الوصفية لتجنب خطأ تعارض يوتيوب وانستجرام
+        if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
+            post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
+        elif ch_id == "6aa6d1fbea19ca0bde35e91c":
+            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
         try:
             res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=40).json()
