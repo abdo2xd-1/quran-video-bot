@@ -15,9 +15,6 @@ import moviepy.video.fx.all as vfx
 
 HISTORY_FILE = "history_shorts_all.json"
 
-# الرابط المباشر لمشهد الشارع المبلل والترام تحت المطر بفرنسا
-EXACT_BORDEAUX_RAIN_VIDEO = "https://assets.mixkit.co/videos/preview/mixkit-walking-down-a-wet-street-with-tram-tracks-in-bordeaux-41315-large.mp4"
-
 # الشيوخ المحددين فقط (الدوسري والمنشاوي)
 RECITERS_POOL = [
     {"name": "محمد صديق المنشاوي", "everyayah": "Minshawy_Murattal_128kbps"},
@@ -78,47 +75,59 @@ def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
             
     return aud_file, final_aud.duration
 
-def prepare_exact_bordeaux_video(tag):
-    raw_bg = f"raw_bordeaux_{tag}.mp4"
-    fast_bg = f"ready_bordeaux_{tag}.mp4"
+def prepare_unique_background(tag, history):
+    raw_bg = f"raw_bg_{tag}.mp4"
+    fast_bg = f"ready_bg_{tag}.mp4"
 
-    print("🎥 محاولة جلب فيديو Mixkit الأصلي للمطر...", flush=True)
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    print("🎥 جاري البحث عن خلفية سينمائية فريدة لم يتم استخدامها من قبل...", flush=True)
+    pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
+    
+    # كلمات بحث متنوعة جداً لضمان عدم نفاد الخلفيات
+    bg_queries = [
+        "rain street dark", "nature rain moody", "calm ocean dark", 
+        "night storm cinematic", "dark moody clouds", "waterfall dark cinematic", 
+        "rainy window dark", "forest rain moody", "abstract dark waves",
+        "stars night sky time lapse", "snowing dark forest", "mountain fog moody"
+    ]
+    
     success = False
-
-    try:
-        res = requests.get(EXACT_BORDEAUX_RAIN_VIDEO, headers=headers, timeout=25)
-        res.raise_for_status()
-        with open(raw_bg, "wb") as f:
-            f.write(res.content)
-        if os.path.getsize(raw_bg) > 100000:
-            success = True
-    except Exception as e:
-        print(f"⚠️ تم حظر Mixkit، جاري التحويل للملاذ الآمن... ({e})", flush=True)
-
-    if not success:
-        print("🔄 جلب مشهد مطر بديل باستخدام Pexels API...", flush=True)
-        pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
-        p_headers = {"Authorization": pexels_key} if pexels_key else {}
+    used_bgs = history.get("used_bg_ids", [])
+    
+    if pexels_key:
+        p_headers = {"Authorization": pexels_key}
+        random.shuffle(bg_queries)
         
-        try:
-            api_url = "https://api.pexels.com/videos/search?query=rain+street+dark+moody&orientation=portrait&per_page=15"
-            r = requests.get(api_url, headers=p_headers, timeout=20).json()
-            videos = r.get("videos", [])
-            
-            if videos:
-                v = random.choice(videos)
-                hd_file = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]
-                res2 = requests.get(hd_file.get("link"), timeout=90)
-                res2.raise_for_status()
-                with open(raw_bg, "wb") as f:
-                    f.write(res2.content)
-            else:
-                print("❌ لم يتم العثور على نتائج في Pexels.", flush=True)
-        except Exception as e2:
-            print(f"❌ فشل الاتصال بـ Pexels: {e2}", flush=True)
-
-    if not os.path.exists(raw_bg) or os.path.getsize(raw_bg) < 100000:
+        for query in bg_queries:
+            if success: break
+            try:
+                api_url = f"https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=40"
+                r = requests.get(api_url, headers=p_headers, timeout=15).json()
+                videos = r.get("videos", [])
+                random.shuffle(videos)
+                
+                for v in videos:
+                    vid_id = str(v.get("id"))
+                    # التحقق من أن الفيديو لم يتم استخدامه سابقاً
+                    if vid_id not in used_bgs:
+                        hd_file = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]
+                        link = hd_file.get("link")
+                        
+                        res2 = requests.get(link, timeout=90)
+                        res2.raise_for_status()
+                        with open(raw_bg, "wb") as f:
+                            f.write(res2.content)
+                            
+                        if os.path.getsize(raw_bg) > 100000:
+                            used_bgs.append(vid_id)
+                            history["used_bg_ids"] = used_bgs
+                            success = True
+                            print(f"✅ تم تحميل خلفية جديدة بنجاح (معرف: {vid_id})", flush=True)
+                            break
+            except Exception as e:
+                continue
+                
+    if not success:
+        print("⚠️ فشل العثور على فيديو جديد (أو نفدت الفيديوهات)، سيتم توليد خلفية مظلمة لإنقاذ التشغيلة...", flush=True)
         subprocess.run([
             "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#080d14:s=1080x1920:d=60",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", fast_bg
@@ -136,13 +145,14 @@ def prepare_exact_bordeaux_video(tag):
         os.remove(raw_bg)
     return fast_bg
 
-def build_fast_short_video(surah_num, surah_name, start_a, end_a, reciter_info, tag):
+def build_fast_short_video(surah_num, surah_name, start_a, end_a, reciter_info, tag, history):
     rec_name = reciter_info["name"]
 
     aud_file, tot_dur = build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag)
     audio_clip = AudioFileClip(aud_file)
 
-    fast_bg = prepare_exact_bordeaux_video(tag)
+    # تمرير history للتأكد من فرادة الخلفية
+    fast_bg = prepare_unique_background(tag, history)
     bg = VideoFileClip(fast_bg)
     
     if bg.duration < tot_dur:
@@ -239,7 +249,6 @@ def post_to_buffer(video_url, yt_title, caption):
             "assets": [{"video": {"url": video_url}}]
         }
 
-        # فصل البيانات الوصفية لتجنب خطأ تعارض يوتيوب وانستجرام
         if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
             post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
         elif ch_id == "6aa6d1fbea19ca0bde35e91c":
@@ -485,7 +494,7 @@ if __name__ == "__main__":
     tag = f"short_{item['key']}_{int(time.time())}"
 
     vid_file, r_name = build_fast_short_video(
-        item["surah"], item["name"], item["start"], item["end"], reciter, tag
+        item["surah"], item["name"], item["start"], item["end"], reciter, tag, history
     )
 
     pub_url = upload_files(vid_file)
@@ -509,7 +518,7 @@ if __name__ == "__main__":
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة المقطع</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة المقطع</a>" if odysee_link else ""
     report = (
-        f"✨ <b>تم إنتاج ونشر المقطع بنجاح! (بدون نصوص)</b>\n\n"
+        f"✨ <b>تم إنتاج ونشر المقطع بنجاح! (بدون نصوص وخلفية فريدة)</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']}\n"
         f"🔢 <b>الآيات:</b> ({item['start']} إلى {item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
