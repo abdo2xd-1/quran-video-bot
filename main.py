@@ -11,13 +11,14 @@ from moviepy.editor import (
     VideoFileClip, AudioFileClip, 
     CompositeVideoClip, concatenate_audioclips
 )
+import moviepy.video.fx.all as vfx
 
 HISTORY_FILE = "history_shorts_all.json"
 
 # الرابط المباشر لمشهد الشارع المبلل والترام تحت المطر بفرنسا
 EXACT_BORDEAUX_RAIN_VIDEO = "https://assets.mixkit.co/videos/preview/mixkit-walking-down-a-wet-street-with-tram-tracks-in-bordeaux-41315-large.mp4"
 
-# الشيوخ المحددين فقط (مع معرفات everyayah لضمان قص الآيات بشكل دقيق 100%)
+# الشيوخ المحددين فقط (الدوسري والمنشاوي)
 RECITERS_POOL = [
     {"name": "محمد صديق المنشاوي", "everyayah": "Minshawy_Murattal_128kbps"},
     {"name": "ياسر الدوسري", "everyayah": "Yasser_Ad-Dussary_128kbps"}
@@ -40,10 +41,10 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
-    """تحميل كل آية بشكل منفصل ودمجها لضمان توافق الصوت مع النهاية بالثانية بالضبط"""
+    """تحميل كل آية وقص الفواصل الصامتة لدمج التلاوة بانسيابية تامة"""
     clips = []
     temp_files = []
-    print(f"📥 جاري تحميل ودمج الآيات من {start_a} إلى {end_a} بدقة متناهية...", flush=True)
+    print(f"📥 جاري تحميل الآيات من {start_a} إلى {end_a} وإزالة الفواصل الصامتة...", flush=True)
     
     for a in range(start_a, end_a + 1):
         s_str = str(surah_num).zfill(3)
@@ -55,7 +56,12 @@ def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
             if r.status_code == 200:
                 with open(file_name, "wb") as f:
                     f.write(r.content)
-                clips.append(AudioFileClip(file_name))
+                
+                clip = AudioFileClip(file_name)
+                # قص الفراغات الصامتة (0.15 ثانية من البداية و 0.25 ثانية من النهاية) لربط الصوت بسلاسة
+                if clip.duration > 0.6:
+                    clip = clip.subclip(0.15, clip.duration - 0.25)
+                clips.append(clip)
                 temp_files.append(file_name)
         except Exception as e:
             print(f"⚠️ خطأ في تحميل الآية {a}: {e}", flush=True)
@@ -136,14 +142,21 @@ def prepare_exact_bordeaux_video(tag):
 def build_fast_short_video(surah_num, surah_name, start_a, end_a, reciter_info, tag):
     rec_name = reciter_info["name"]
 
-    # 1. بناء الصوت المدمج للآيات والحصول على الطول الدقيق
+    # 1. بناء الصوت المدمج بدون فواصل
     aud_file, tot_dur = build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag)
     audio_clip = AudioFileClip(aud_file)
 
-    # 2. بناء الخلفية ومطابقة طولها لطول الصوت بالظبط (سينتهي الفيديو مع الآية)
+    # 2. تجهيز الخلفية وتطبيق التصوير البطيء لمنع التكرار نهائياً
     fast_bg = prepare_exact_bordeaux_video(tag)
     bg = VideoFileClip(fast_bg)
-    bg = bg.loop(duration=tot_dur) if bg.duration < tot_dur else bg.subclip(0, tot_dur)
+    
+    if bg.duration < tot_dur:
+        # إذا كان الفيديو أقصر من الصوت، نجعله بطيئاً ليتمدد ويطابق الصوت بالثانية (Slow Motion)
+        factor = bg.duration / tot_dur
+        bg = bg.fx(vfx.speedx, factor)
+    else:
+        # إذا كان أطول نقطعه بشكل عادي
+        bg = bg.subclip(0, tot_dur)
     
     # 3. دمج الصوت مع الصورة (بدون أي نصوص)
     main_video = bg.set_audio(audio_clip).set_duration(tot_dur)
@@ -445,7 +458,6 @@ if __name__ == "__main__":
         week_str = local_egypt_time.strftime("%Y_%U")
         item = get_friday_kahf_chunk(history, week_str)
         print(f"🌟 الجمعة المبارك: إنتاج سورة الكهف - الآيات ({item['start']}-{item['end']})...", flush=True)
-        # اسم السورة فقط في العنوان كما طلبت
         yt_title = f"سورة الكهف #shorts"
         caption = (
             f"📖 سورة الكهف\n"
@@ -457,7 +469,6 @@ if __name__ == "__main__":
     else:
         item = pick_unposted_clip_all_quran(history)
         print(f"🎬 المقطع العشوائي: سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
-        # اسم السورة فقط في العنوان كما طلبت
         yt_title = f"سورة {item['name']} #shorts"
         caption = (
             f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
@@ -498,7 +509,7 @@ if __name__ == "__main__":
         f"🔢 <b>الآيات:</b> ({item['start']} إلى {item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
         f"🚀 <b>حالة Buffer:</b> {'نجاح ✅' if buffer_success else 'فشل ❌'}\n"
-        f"🔗 <b>رابط التحميل:</b> <a href='{pub_url}'>هنا</a>"
+        f"🔗 <b>الرابط المباشر:</b> <a href='{pub_url}'>هنا</a>"
         f"{dm_report}"
         f"{odysee_report}"
     )
