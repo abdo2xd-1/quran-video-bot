@@ -41,7 +41,6 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
-    """تحميل كل آية وقص الفواصل الصامتة لدمج التلاوة بانسيابية تامة"""
     clips = []
     temp_files = []
     print(f"📥 جاري تحميل الآيات من {start_a} إلى {end_a} وإزالة الفواصل الصامتة...", flush=True)
@@ -52,13 +51,13 @@ def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
         url = f"https://everyayah.com/data/{reciter_info['everyayah']}/{s_str}{a_str}.mp3"
         file_name = f"aud_{tag}_{s_str}_{a_str}.mp3"
         try:
-            r = requests.get(url, timeout=15)
+            r = requests.get(url, timeout=20)
             if r.status_code == 200:
                 with open(file_name, "wb") as f:
                     f.write(r.content)
                 
                 clip = AudioFileClip(file_name)
-                # قص الفراغات الصامتة (0.15 ثانية من البداية و 0.25 ثانية من النهاية) لربط الصوت بسلاسة
+                # قص الفراغات الصامتة لربط الصوت بسلاسة
                 if clip.duration > 0.6:
                     clip = clip.subclip(0.15, clip.duration - 0.25)
                 clips.append(clip)
@@ -89,39 +88,38 @@ def prepare_exact_bordeaux_video(tag):
     success = False
 
     try:
-        res = requests.get(EXACT_BORDEAUX_RAIN_VIDEO, headers=headers, timeout=20)
+        res = requests.get(EXACT_BORDEAUX_RAIN_VIDEO, headers=headers, timeout=25)
         res.raise_for_status()
         with open(raw_bg, "wb") as f:
             f.write(res.content)
         if os.path.getsize(raw_bg) > 100000:
             success = True
     except Exception as e:
-        print(f"⚠️ تم حظر Mixkit (403)، جاري التحويل للملاذ الآمن... ({e})", flush=True)
+        print(f"⚠️ تم حظر Mixkit، جاري التحويل للملاذ الآمن... ({e})", flush=True)
 
     if not success:
-        print("🔄 جلب مشهد مطر بديل باستخدام مفتاح Pexels API المعتمد...", flush=True)
+        print("🔄 جلب مشهد مطر بديل باستخدام Pexels API...", flush=True)
         pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
         p_headers = {"Authorization": pexels_key} if pexels_key else {}
         
         try:
             api_url = "https://api.pexels.com/videos/search?query=rain+street+dark+moody&orientation=portrait&per_page=15"
-            r = requests.get(api_url, headers=p_headers, timeout=15).json()
+            r = requests.get(api_url, headers=p_headers, timeout=20).json()
             videos = r.get("videos", [])
             
             if videos:
                 v = random.choice(videos)
                 hd_file = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]
-                res2 = requests.get(hd_file.get("link"), timeout=60)
+                res2 = requests.get(hd_file.get("link"), timeout=90)
                 res2.raise_for_status()
                 with open(raw_bg, "wb") as f:
                     f.write(res2.content)
             else:
                 print("❌ لم يتم العثور على نتائج في Pexels.", flush=True)
         except Exception as e2:
-            print(f"❌ فشل الاتصال بـ Pexels API أيضاً: {e2}", flush=True)
+            print(f"❌ فشل الاتصال بـ Pexels: {e2}", flush=True)
 
     if not os.path.exists(raw_bg) or os.path.getsize(raw_bg) < 100000:
-        print("⚠️ إنشاء خلفية سينمائية مظلمة مؤقتة لتفادي انهيار النظام...", flush=True)
         subprocess.run([
             "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#080d14:s=1080x1920:d=60",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", fast_bg
@@ -142,23 +140,18 @@ def prepare_exact_bordeaux_video(tag):
 def build_fast_short_video(surah_num, surah_name, start_a, end_a, reciter_info, tag):
     rec_name = reciter_info["name"]
 
-    # 1. بناء الصوت المدمج بدون فواصل
     aud_file, tot_dur = build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag)
     audio_clip = AudioFileClip(aud_file)
 
-    # 2. تجهيز الخلفية وتطبيق التصوير البطيء لمنع التكرار نهائياً
     fast_bg = prepare_exact_bordeaux_video(tag)
     bg = VideoFileClip(fast_bg)
     
     if bg.duration < tot_dur:
-        # إذا كان الفيديو أقصر من الصوت، نجعله بطيئاً ليتمدد ويطابق الصوت بالثانية (Slow Motion)
         factor = bg.duration / tot_dur
         bg = bg.fx(vfx.speedx, factor)
     else:
-        # إذا كان أطول نقطعه بشكل عادي
         bg = bg.subclip(0, tot_dur)
     
-    # 3. دمج الصوت مع الصورة (بدون أي نصوص)
     main_video = bg.set_audio(audio_clip).set_duration(tot_dur)
 
     out_file = f"final_{tag}.mp4"
@@ -176,6 +169,8 @@ def upload_files(video_file):
     print("📤 رفع ملف Shorts للحصول على رابط مباشر لـ Buffer...", flush=True)
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
+    
+    # 1. محاولة الرفع عبر GitHub Releases (الأكثر استقراراً)
     if repo and gh_token:
         tag_name = f"v-short-{int(time.time()*1000)}"
         try:
@@ -187,23 +182,38 @@ def upload_files(video_file):
             if "upload_url" in res:
                 u_url = res["upload_url"].split("{")[0]
                 with open(video_file, "rb") as vf:
-                    up_res = requests.post(f"{u_url}?name=video.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=120).json()
+                    # زيادة وقت الانتظار إلى 300 ثانية
+                    up_res = requests.post(f"{u_url}?name=video.mp4", headers={"Authorization": f"token {gh_token}", "Content-Type": "video/mp4"}, data=vf, timeout=300).json()
                 browser_url = up_res.get("browser_download_url")
                 if browser_url:
-                    print(f"✅ تم الرفع كـ Release على GitHub: {browser_url}", flush=True)
+                    print(f"✅ تم الرفع على GitHub: {browser_url}", flush=True)
                     return browser_url
         except Exception as e:
-            print(f"⚠️ خطأ في GitHub Releases: {e}", flush=True)
+            print(f"⚠️ فشل الرفع عبر GitHub: {e}", flush=True)
 
+    # 2. محاولة الرفع عبر سيرفر uguu.se (سيرفر قوي ومستقر)
     try:
+        print("🔄 جاري محاولة الرفع عبر خادم uguu.se...", flush=True)
         with open(video_file, "rb") as f:
-            r = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=120)
-            if r.status_code == 200 and r.text.startswith("http"):
-                url = r.text.strip()
-                print(f"✅ تم الرفع على Catbox بنجاح: {url}", flush=True)
+            r = requests.post("https://uguu.se/upload", files={"files[]": f}, timeout=180).json()
+            if r.get("success") and len(r.get("files", [])) > 0:
+                url = r["files"][0].get("url")
+                print(f"✅ تم الرفع على Uguu: {url}", flush=True)
                 return url
     except Exception as e:
-        print(f"⚠️ خطأ في Catbox: {e}", flush=True)
+        print(f"⚠️ فشل الرفع عبر Uguu: {e}", flush=True)
+
+    # 3. محاولة الرفع عبر Catbox كملاذ أخير
+    try:
+        print("🔄 جاري محاولة الرفع عبر خادم Catbox...", flush=True)
+        with open(video_file, "rb") as f:
+            r = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": f}, timeout=180)
+            if r.status_code == 200 and r.text.startswith("http"):
+                url = r.text.strip()
+                print(f"✅ تم الرفع على Catbox: {url}", flush=True)
+                return url
+    except Exception as e:
+        print(f"⚠️ فشل الرفع عبر Catbox: {e}", flush=True)
 
     return None
 
@@ -211,8 +221,9 @@ def post_to_buffer(video_url, yt_title, caption):
     buffer_token = os.getenv("BUFFER_ACCESS_TOKEN", "").strip()
     channels_raw = os.getenv("BUFFER_CHANNEL_ID", "").strip()
     if not buffer_token or not channels_raw:
-        print("⚠️ بيانات Buffer غير مكتملة، تم التخطي.", flush=True)
+        print("⚠️ بيانات Buffer غير مكتملة.", flush=True)
         return False
+        
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
     graphql_url = "https://api.buffer.com"
     headers = {"Authorization": f"Bearer {buffer_token}", "Content-Type": "application/json"}
@@ -230,24 +241,23 @@ def post_to_buffer(video_url, yt_title, caption):
             "text": caption, 
             "mode": "shareNow", 
             "schedulingType": "automatic",
-            "assets": [{"video": {"url": video_url}}]
+            "assets": [{"video": {"url": video_url}}],
+            "metadata": {
+                "youtube": {"title": yt_title[:95], "categoryId": "27"},
+                "instagram": {"type": "reel", "shouldShareToFeed": True}
+            }
         }
 
-        if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
-            post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
-        elif ch_id == "6aa6d1fbea19ca0bde35e91c":
-            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
-
         try:
-            res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=35).json()
+            res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=40).json()
             post_data = res.get("data", {}).get("createPost", {})
             if "post" in post_data:
-                print(f"✅ نجح إرسال Shorts لـ Buffer للقناة {ch_id}", flush=True)
+                print(f"✅ نجح إرسال Shorts للقناة {ch_id} عبر Buffer", flush=True)
                 success = True
             else:
-                print(f"❌ رد Buffer للقناة {ch_id}: {post_data.get('message', res)}", flush=True)
+                print(f"❌ خطأ من Buffer للقناة {ch_id}: {post_data.get('message', res)}", flush=True)
         except Exception as e:
-            print(f"❌ خطأ أثناء الاتصال بـ Buffer: {e}", flush=True)
+            print(f"❌ خطأ في الاتصال بـ Buffer: {e}", flush=True)
             
     return success
 
@@ -296,7 +306,7 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
         video_id = create_res.get("id")
         if video_id:
             dm_link = f"https://www.dailymotion.com/video/{video_id}"
-            print(f"✅ تم نشر الفيديو بنجاح على Dailymotion: {dm_link}", flush=True)
+            print(f"✅ تم النشر على Dailymotion: {dm_link}", flush=True)
             return dm_link
     except Exception as e:
         pass
@@ -357,7 +367,7 @@ def post_to_odysee(video_file, title, description, tags=None):
 
         if claim_name and res_claim_id:
             odysee_url = f"https://odysee.com/{claim_name}:{res_claim_id}"
-            print(f"✅ تم النشر بنجاح على Odysee: {odysee_url}", flush=True)
+            print(f"✅ تم النشر على Odysee: {odysee_url}", flush=True)
             return odysee_url
     except Exception:
         pass
@@ -385,7 +395,6 @@ def get_friday_kahf_chunk(history, current_week_str):
         start_a = 1
         part_num = 1
 
-    # 5 آيات كحد أدنى كما طلبت
     chunk_size = 5
     end_a = min(110, start_a + chunk_size - 1)
     clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
@@ -429,7 +438,6 @@ def pick_unposted_clip_all_quran(history):
         s_name = surah["name"]
         total_ayahs = surah["ayahs"]
         
-        # 5 آيات كحد أدنى كما طلبت
         chunk_size = 5 if total_ayahs >= 5 else total_ayahs
         start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
         end_a = min(total_ayahs, start_a + chunk_size - 1)
