@@ -37,12 +37,20 @@ def save_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
-def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
+def build_audio_for_ayahs(surah_num, start_a, end_limit, reciter_info, tag):
+    """
+    تجميع ذكي للآيات: 
+    يقوم بإضافة الآيات آية آية، فإذا وجد أن إضافة الآية القادمة 
+    ستجعل الفيديو يتجاوز 59 ثانية، يتوقف فوراً لينهي الفيديو بدقة مع الآية السابقة.
+    """
     clips = []
     temp_files = []
-    print(f"📥 جاري تحميل الآيات من {start_a} إلى {end_a} وإزالة الفواصل الصامتة...", flush=True)
+    current_duration = 0.0
+    final_end_a = start_a - 1
     
-    for a in range(start_a, end_a + 1):
+    print(f"📥 جاري تجميع الآيات بدءاً من الآية {start_a} بحيث لا يتخطى الإجمالي 59 ثانية...", flush=True)
+    
+    for a in range(start_a, end_limit + 1):
         s_str = str(surah_num).zfill(3)
         a_str = str(a).zfill(3)
         url = f"https://everyayah.com/data/{reciter_info['everyayah']}/{s_str}{a_str}.mp3"
@@ -54,18 +62,43 @@ def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
                     f.write(r.content)
                 
                 clip = AudioFileClip(file_name)
+                # قص صمت البداية والنهاية
                 if clip.duration > 0.6:
                     clip = clip.subclip(0.15, clip.duration - 0.25)
+                
+                # التحقق الذكي من الوقت: إذا تخطى 59 ثانية
+                if current_duration + clip.duration > 59.0:
+                    if len(clips) > 0:
+                        clip.close()
+                        os.remove(file_name)
+                        break # إيقاف الإضافة لضمان النهاية الدقيقة مع الآية السابقة
+                    else:
+                        # حالة نادرة جداً: الآية الأولى وحدها أطول من دقيقة (مثل آية الدين)
+                        clips.append(clip)
+                        temp_files.append(file_name)
+                        final_end_a = a
+                        break
+                
                 clips.append(clip)
                 temp_files.append(file_name)
+                current_duration += clip.duration
+                final_end_a = a
+            else:
+                break
         except Exception as e:
             print(f"⚠️ خطأ في تحميل الآية {a}: {e}", flush=True)
+            break
             
     if not clips:
-        raise Exception("❌ فشل تحميل الآيات، قد يكون هناك مشكلة في الاتصال بالخادم.")
+        raise Exception("❌ فشل تحميل الآيات من الخادم.")
         
     final_aud = concatenate_audioclips(clips)
     aud_file = f"final_aud_{tag}.mp3"
+    
+    # حماية قصوى لضمان قبول يوتيوب كـ Shorts (إذا تخطى 59 بسبب آية واحدة طويلة جداً)
+    if final_aud.duration > 59.0:
+        final_aud = final_aud.subclip(0, 59.0)
+
     final_aud.write_audiofile(aud_file, logger=None)
     
     for f in temp_files:
@@ -73,16 +106,15 @@ def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
             try: os.remove(f)
             except: pass
             
-    return aud_file, final_aud.duration
+    return aud_file, final_aud.duration, final_end_a
 
 def prepare_unique_background(tag, history):
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"ready_bg_{tag}.mp4"
 
-    print("🎥 جاري البحث عن خلفية سينمائية طبيعية أو إسلامية فريدة...", flush=True)
+    print("🎥 جاري البحث عن خلفية طبيعية أو إسلامية فريدة (بدون أشكال غريبة)...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     
-    # كلمات بحث طبيعية وإسلامية فقط ومناسبة للقرآن الكريم
     bg_queries = [
         "rain street dark", "nature rain moody", "calm ocean dark", 
         "night storm cinematic", "dark moody clouds", "waterfall dark cinematic", 
@@ -121,13 +153,11 @@ def prepare_unique_background(tag, history):
                             used_bgs.append(vid_id)
                             history["used_bg_ids"] = used_bgs
                             success = True
-                            print(f"✅ تم تحميل خلفية جديدة بنجاح (معرف: {vid_id})", flush=True)
                             break
             except Exception as e:
                 continue
                 
     if not success:
-        print("⚠️ فشل العثور على فيديو جديد، سيتم توليد خلفية مظلمة لإنقاذ التشغيلة...", flush=True)
         subprocess.run([
             "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#080d14:s=1080x1920:d=60",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", fast_bg
@@ -145,10 +175,10 @@ def prepare_unique_background(tag, history):
         os.remove(raw_bg)
     return fast_bg
 
-def build_fast_short_video(surah_num, surah_name, start_a, end_a, reciter_info, tag, history):
+def build_fast_short_video(surah_num, surah_name, start_a, end_limit, reciter_info, tag, history):
     rec_name = reciter_info["name"]
 
-    aud_file, tot_dur = build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag)
+    aud_file, tot_dur, actual_end_a = build_audio_for_ayahs(surah_num, start_a, end_limit, reciter_info, tag)
     audio_clip = AudioFileClip(aud_file)
 
     fast_bg = prepare_unique_background(tag, history)
@@ -171,7 +201,7 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, reciter_info, 
     if os.path.exists(aud_file): os.remove(aud_file)
     if os.path.exists(fast_bg): os.remove(fast_bg)
 
-    return out_file, rec_name
+    return out_file, rec_name, actual_end_a
 
 def upload_files(video_file):
     print("📤 رفع ملف Shorts للحصول على رابط مباشر لـ Buffer...", flush=True)
@@ -195,7 +225,7 @@ def upload_files(video_file):
                     print(f"✅ تم الرفع على GitHub: {browser_url}", flush=True)
                     return browser_url
         except Exception as e:
-            print(f"⚠️ فشل الرفع عبر GitHub: {e}", flush=True)
+            pass
 
     try:
         print("🔄 جاري محاولة الرفع عبر خادم uguu.se...", flush=True)
@@ -206,7 +236,7 @@ def upload_files(video_file):
                 print(f"✅ تم الرفع على Uguu: {url}", flush=True)
                 return url
     except Exception as e:
-        print(f"⚠️ فشل الرفع عبر Uguu: {e}", flush=True)
+        pass
 
     try:
         print("🔄 جاري محاولة الرفع عبر خادم Catbox...", flush=True)
@@ -217,7 +247,7 @@ def upload_files(video_file):
                 print(f"✅ تم الرفع على Catbox: {url}", flush=True)
                 return url
     except Exception as e:
-        print(f"⚠️ فشل الرفع عبر Catbox: {e}", flush=True)
+        pass
 
     return None
 
@@ -272,20 +302,12 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
     username = os.getenv("DAILYMOTION_USERNAME", "").strip()
     password = os.getenv("DAILYMOTION_PASSWORD", "").strip()
 
-    if not all([api_key, api_secret, username, password]):
-        return None
+    if not all([api_key, api_secret, username, password]): return None
 
     try:
         token_res = requests.post(
             "https://api.dailymotion.com/oauth/token",
-            data={
-                "grant_type": "password",
-                "client_id": api_key,
-                "client_secret": api_secret,
-                "username": username,
-                "password": password,
-                "scope": "manage_videos"
-            },
+            data={"grant_type": "password", "client_id": api_key, "client_secret": api_secret, "username": username, "password": password, "scope": "manage_videos"},
             timeout=30
         ).json()
 
@@ -302,10 +324,7 @@ def post_to_dailymotion(video_file, title, description, tags="quran,islam,shorts
 
         if not file_url: return None
 
-        publish_data = {
-            "url": file_url, "title": title[:250], "description": description,
-            "tags": tags, "channel": "lifestyle", "published": "true", "is_created_for_kids": "false"
-        }
+        publish_data = {"url": file_url, "title": title[:250], "description": description, "tags": tags, "channel": "lifestyle", "published": "true", "is_created_for_kids": "false"}
         create_res = requests.post("https://api.dailymotion.com/me/videos", headers=headers, data=publish_data, timeout=30).json()
 
         video_id = create_res.get("id")
@@ -359,10 +378,7 @@ def post_to_odysee(video_file, title, description, tags=None):
         if patch_res.status_code not in [200, 204]: return None
         file_id = upload_location.rstrip("/").split("/")[-1]
 
-        publish_params = {
-            "name": clean_stream_name, "title": title[:95], "description": description,
-            "tags": tags, "languages": ["ar"], "bid": "0.0001", "file_path": file_id, "channel_id": channel_id
-        }
+        publish_params = {"name": clean_stream_name, "title": title[:95], "description": description, "tags": tags, "languages": ["ar"], "bid": "0.0001", "file_path": file_id, "channel_id": channel_id}
         payload = {"jsonrpc": "2.0", "method": "publish", "params": publish_params, "id": int(time.time())}
         pub_res = requests.post("https://api.na-backend.odysee.com/api/v1/proxy?m=publish", headers=headers, json=payload, timeout=60).json()
 
@@ -400,21 +416,14 @@ def get_friday_kahf_chunk(history, current_week_str):
         start_a = 1
         part_num = 1
 
-    chunk_size = 5
-    end_a = min(110, start_a + chunk_size - 1)
-    clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
-
-    history["kahf_progress"] = {
-        "week": current_week_str,
-        "next_ayah": end_a + 1,
-        "part": part_num + 1
-    }
+    end_limit = min(110, start_a + 20) # سيختبر حتى 20 آية ويتوقف عند 59 ثانية
+    clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}"
 
     return {
         "surah": 18,
         "name": "الكهف",
         "start": start_a,
-        "end": end_a,
+        "end_limit": end_limit,
         "part": part_num,
         "key": clip_key,
     }
@@ -443,23 +452,23 @@ def pick_unposted_clip_all_quran(history):
         s_name = surah["name"]
         total_ayahs = surah["ayahs"]
         
-        chunk_size = 5 if total_ayahs >= 5 else total_ayahs
-        start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
-        end_a = min(total_ayahs, start_a + chunk_size - 1)
-        clip_key = f"{s_num}_{start_a}_{end_a}"
+        start_a = random.randint(1, total_ayahs)
+        end_limit = min(total_ayahs, start_a + 20) # سيختبر حتى 20 آية ويتوقف عند 59 ثانية
+        clip_key = f"{s_num}_{start_a}"
+        
         if clip_key not in posted_keys:
             return {
                 "surah": s_num,
                 "name": s_name,
                 "start": start_a,
-                "end": end_a,
+                "end_limit": end_limit,
                 "part": None,
                 "key": clip_key
             }
 
     history["posted_keys"] = []
-    s = random.choice([x for x in surahs if x["ayahs"] >= 5 and x["number"] != 18])
-    return {"surah": s["number"], "name": s["name"], "start": 1, "end": 5, "part": None, "key": f"{s['number']}_1_5_{int(time.time())}"}
+    s = random.choice([x for x in surahs if x["number"] != 18])
+    return {"surah": s["number"], "name": s["name"], "start": 1, "end_limit": min(s["ayahs"], 20), "part": None, "key": f"{s['number']}_1_{int(time.time())}"}
 
 if __name__ == "__main__":
     local_egypt_time = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
@@ -470,7 +479,19 @@ if __name__ == "__main__":
     if is_friday:
         week_str = local_egypt_time.strftime("%Y_%U")
         item = get_friday_kahf_chunk(history, week_str)
-        print(f"🌟 الجمعة المبارك: إنتاج سورة الكهف - الآيات ({item['start']}-{item['end']})...", flush=True)
+    else:
+        item = pick_unposted_clip_all_quran(history)
+        
+    tag = f"short_{item['key']}_{int(time.time())}"
+
+    # الدالة الآن ترجع (actual_end_a) وهو رقم الآية الدقيق الذي انتهى عنده الفيديو دون أن يتجاوز 59 ثانية
+    vid_file, r_name, actual_end_a = build_fast_short_video(
+        item["surah"], item["name"], item["start"], item["end_limit"], reciter, tag, history
+    )
+    
+    item["end"] = actual_end_a
+
+    if is_friday:
         yt_title = f"سورة الكهف #shorts"
         caption = (
             f"📖 سورة الكهف\n"
@@ -479,9 +500,12 @@ if __name__ == "__main__":
             f"تلاوة خاشعة تريح القلوب من سورة الكهف المباركة ليوم الجمعة 🤍\n\n"
             f"{SEO_HASHTAGS} #يوم_الجمعة #سورة_الكهف"
         )
+        history["kahf_progress"] = {
+            "week": week_str,
+            "next_ayah": actual_end_a + 1,
+            "part": item["part"] + 1
+        }
     else:
-        item = pick_unposted_clip_all_quran(history)
-        print(f"🎬 المقطع العشوائي: سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
         yt_title = f"سورة {item['name']} #shorts"
         caption = (
             f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
@@ -489,12 +513,8 @@ if __name__ == "__main__":
             f"اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء أحزاننا 🤍\n\n"
             f"{SEO_HASHTAGS} #سورة_{item['name']} #تلاوة_خاشعة"
         )
-
-    tag = f"short_{item['key']}_{int(time.time())}"
-
-    vid_file, r_name = build_fast_short_video(
-        item["surah"], item["name"], item["start"], item["end"], reciter, tag, history
-    )
+        history["posted_keys"].append(item["key"])
+        history["posted_keys"].append(f"{item['surah']}_{item['start']}_{item['end']}")
 
     pub_url = upload_files(vid_file)
 
@@ -508,16 +528,12 @@ if __name__ == "__main__":
     dm_link = post_to_dailymotion(vid_file, yt_title, caption, tags=SEO_TAGS_YOUTUBE)
     odysee_link = post_to_odysee(vid_file, yt_title, caption, tags=SEO_TAGS_YOUTUBE.split(", "))
 
-    if not is_friday:
-        if item["key"] not in history["posted_keys"]:
-            history["posted_keys"].append(item["key"])
-
     save_history(history)
 
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة المقطع</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة المقطع</a>" if odysee_link else ""
     report = (
-        f"✨ <b>تم إنتاج ونشر المقطع بنجاح! (بدون نصوص وخلفية فريدة)</b>\n\n"
+        f"✨ <b>تم إنتاج ونشر المقطع بنجاح! (نهاية دقيقة وتوقيت مثالي)</b>\n\n"
         f"📖 <b>السورة:</b> {item['name']}\n"
         f"🔢 <b>الآيات:</b> ({item['start']} إلى {item['end']})\n"
         f"🎙️ <b>القارئ:</b> {r_name}\n"
