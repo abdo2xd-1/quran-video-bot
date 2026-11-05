@@ -58,7 +58,7 @@ def build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag):
                     f.write(r.content)
                 
                 clip = AudioFileClip(file_name)
-                # قص الفراغات الصامتة (0.15 ثانية من البداية و 0.25 ثانية من النهاية) لربط الصوت بسلاسة
+                # قص الفراغات الصامتة لربط الصوت بسلاسة
                 if clip.duration > 0.6:
                     clip = clip.subclip(0.15, clip.duration - 0.25)
                 clips.append(clip)
@@ -213,6 +213,7 @@ def post_to_buffer(video_url, yt_title, caption):
     if not buffer_token or not channels_raw:
         print("⚠️ بيانات Buffer غير مكتملة، تم التخطي.", flush=True)
         return False
+        
     channel_ids = [c.strip() for c in channels_raw.split(",") if c.strip()]
     graphql_url = "https://api.buffer.com"
     headers = {"Authorization": f"Bearer {buffer_token}", "Content-Type": "application/json"}
@@ -230,13 +231,13 @@ def post_to_buffer(video_url, yt_title, caption):
             "text": caption, 
             "mode": "shareNow", 
             "schedulingType": "automatic",
-            "assets": [{"video": {"url": video_url}}]
+            "assets": [{"video": {"url": video_url}}],
+            "metadata": {
+                # دمج إعدادات يوتيوب وانستجرام معاً، وسيأخذ Buffer ما يحتاجه للمنصة المناسبة تلقائياً
+                "youtube": {"title": yt_title[:95], "categoryId": "27"},
+                "instagram": {"type": "reel", "shouldShareToFeed": True}
+            }
         }
-
-        if ch_id in ["6aa9df26ea19ca0bde51b3c5", "6aa72b30ea19ca0bde39598b"]:
-            post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
-        elif ch_id == "6aa6d1fbea19ca0bde35e91c":
-            post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
         try:
             res = requests.post(graphql_url, headers=headers, json={"query": mutation, "variables": {"input": post_input}}, timeout=35).json()
@@ -385,7 +386,7 @@ def get_friday_kahf_chunk(history, current_week_str):
         start_a = 1
         part_num = 1
 
-    # 5 آيات كحد أدنى كما طلبت
+    # 5 آيات كحد أدنى 
     chunk_size = 5
     end_a = min(110, start_a + chunk_size - 1)
     clip_key = f"kahf_{current_week_str}_p{part_num}_{start_a}_{end_a}"
@@ -429,7 +430,7 @@ def pick_unposted_clip_all_quran(history):
         s_name = surah["name"]
         total_ayahs = surah["ayahs"]
         
-        # 5 آيات كحد أدنى كما طلبت
+        # 5 آيات كحد أدنى 
         chunk_size = 5 if total_ayahs >= 5 else total_ayahs
         start_a = random.randint(1, max(1, total_ayahs - chunk_size + 1))
         end_a = min(total_ayahs, start_a + chunk_size - 1)
