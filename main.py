@@ -79,15 +79,16 @@ def prepare_unique_background(tag, history):
     raw_bg = f"raw_bg_{tag}.mp4"
     fast_bg = f"ready_bg_{tag}.mp4"
 
-    print("🎥 جاري البحث عن خلفية سينمائية فريدة لم يتم استخدامها من قبل...", flush=True)
+    print("🎥 جاري البحث عن خلفية سينمائية طبيعية أو إسلامية فريدة...", flush=True)
     pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
     
-    # كلمات بحث متنوعة جداً لضمان عدم نفاد الخلفيات
+    # كلمات بحث طبيعية وإسلامية فقط ومناسبة للقرآن الكريم
     bg_queries = [
         "rain street dark", "nature rain moody", "calm ocean dark", 
         "night storm cinematic", "dark moody clouds", "waterfall dark cinematic", 
-        "rainy window dark", "forest rain moody", "abstract dark waves",
-        "stars night sky time lapse", "snowing dark forest", "mountain fog moody"
+        "rainy window dark", "forest rain moody", "stars night sky time lapse", 
+        "snowing dark forest", "mountain fog moody", "islamic architecture moody", 
+        "mosque cinematic", "kaaba dark"
     ]
     
     success = False
@@ -107,7 +108,6 @@ def prepare_unique_background(tag, history):
                 
                 for v in videos:
                     vid_id = str(v.get("id"))
-                    # التحقق من أن الفيديو لم يتم استخدامه سابقاً
                     if vid_id not in used_bgs:
                         hd_file = sorted(v.get("video_files", []), key=lambda x: x.get("width", 0))[-1]
                         link = hd_file.get("link")
@@ -127,7 +127,7 @@ def prepare_unique_background(tag, history):
                 continue
                 
     if not success:
-        print("⚠️ فشل العثور على فيديو جديد (أو نفدت الفيديوهات)، سيتم توليد خلفية مظلمة لإنقاذ التشغيلة...", flush=True)
+        print("⚠️ فشل العثور على فيديو جديد، سيتم توليد خلفية مظلمة لإنقاذ التشغيلة...", flush=True)
         subprocess.run([
             "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#080d14:s=1080x1920:d=60",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", fast_bg
@@ -151,7 +151,6 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, reciter_info, 
     aud_file, tot_dur = build_audio_for_ayahs(surah_num, start_a, end_a, reciter_info, tag)
     audio_clip = AudioFileClip(aud_file)
 
-    # تمرير history للتأكد من فرادة الخلفية
     fast_bg = prepare_unique_background(tag, history)
     bg = VideoFileClip(fast_bg)
     
