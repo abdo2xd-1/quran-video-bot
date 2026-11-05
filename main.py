@@ -26,6 +26,7 @@ QURAN_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiri/Amiri-
 # الرابط المباشر لمشهد الشارع المبلل والترام تحت المطر بفرنسا
 EXACT_BORDEAUX_RAIN_VIDEO = "https://assets.mixkit.co/videos/preview/mixkit-walking-down-a-wet-street-with-tram-tracks-in-bordeaux-41315-large.mp4"
 
+# تم تحديد القراء ليكونوا الدوسري والمنشاوي فقط
 RECITERS_POOL = [
     {"name": "محمد صديق المنشاوي", "server": "https://server10.mp3quran.net/minsh"},
     {"name": "ياسر الدوسري", "server": "https://server11.mp3quran.net/yasser"}
@@ -105,10 +106,10 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
                 end_ms = segments[-1][3] if segments else None
 
         start_sec = max(0, start_ms / 1000.0)
-        dur_sec = max(5.0, (end_ms / 1000.0) - start_sec) if end_ms else 45.0
+        dur_sec = max(5.0, (end_ms / 1000.0) - start_sec) if end_ms else 59.0
     except Exception:
         start_sec = 0
-        dur_sec = 45.0
+        dur_sec = 59.0
 
     raw_segment = f"raw_segment_{s_str}.mp3"
     subprocess.run([
@@ -124,7 +125,6 @@ def download_surah_segment(surah_num, start_a, end_a, reciter_info, out_file):
     if os.path.exists(raw_segment): os.remove(raw_segment)
     return True
 
-# تم تطوير هذه الدالة بالكامل لتخطي أخطاء الـ 403 ومنع انهيار FFmpeg
 def prepare_exact_bordeaux_video(tag, min_duration):
     raw_bg = f"raw_bordeaux_{tag}.mp4"
     fast_bg = f"ready_bordeaux_{tag}.mp4"
@@ -138,13 +138,11 @@ def prepare_exact_bordeaux_video(tag, min_duration):
         res.raise_for_status()
         with open(raw_bg, "wb") as f:
             f.write(res.content)
-        # التحقق من أن الملف فيديو حقيقي وليس صفحة HTML
         if os.path.getsize(raw_bg) > 100000:
             success = True
     except Exception as e:
         print(f"⚠️ تم حظر Mixkit (403)، جاري التحويل للملاذ الآمن... ({e})", flush=True)
 
-    # إذا تم الحظر، استخدام Pexels API الآمن المربوط بحسابك لتخطي الحظر
     if not success:
         print("🔄 جلب مشهد مطر بديل باستخدام مفتاح Pexels API المعتمد...", flush=True)
         pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
@@ -167,7 +165,6 @@ def prepare_exact_bordeaux_video(tag, min_duration):
         except Exception as e2:
             print(f"❌ فشل الاتصال بـ Pexels API أيضاً: {e2}", flush=True)
 
-    # حماية نهائية لمنع خطأ FFmpeg (Error 183) إذا فشل التحميل تماماً
     if not os.path.exists(raw_bg) or os.path.getsize(raw_bg) < 100000:
         print("⚠️ إنشاء خلفية سينمائية مظلمة مؤقتة لتفادي انهيار النظام...", flush=True)
         subprocess.run([
@@ -177,7 +174,6 @@ def prepare_exact_bordeaux_video(tag, min_duration):
         if os.path.exists(raw_bg): os.remove(raw_bg)
         return fast_bg
 
-    # معالجة الفيديو الذي تم تحميله بنجاح
     scale_cmd = [
         "ffmpeg", "-y", "-i", raw_bg,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
@@ -373,8 +369,8 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     download_surah_segment(surah_num, start_a, end_a, reciter_info, aud_file)
     audio_clip = AudioFileClip(aud_file)
 
-    if audio_clip.duration > 48.0:
-        audio_clip = audio_clip.subclip(0, 48.0)
+    # تم مسح سطر إيقاف الفيديو عند 48 ثانية ليأخذ طول الآية بالكامل
+    tot_dur = audio_clip.duration
 
     verses_payload = []
     for a in range(start_a, end_a + 1):
@@ -388,7 +384,6 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
         except Exception:
             continue
 
-    tot_dur = audio_clip.duration
     v_count = len(verses_payload) if verses_payload else 1
     per_verse_dur = tot_dur / v_count
 
@@ -411,7 +406,8 @@ def build_fast_short_video(surah_num, surah_name, start_a, end_a, badge_label, r
     main_video = CompositeVideoClip([bg, dim] + text_clips).set_audio(audio_clip).set_duration(tot_dur)
 
     cover_file = f"cover_{tag}.jpg"
-    generate_emerald_blue_card(fast_bg, surah_name, f"الآيات ({start_a}-{end_a})", rec_name, font_b64, cover_file)
+    # تعديل الغلاف ليكون مكتوب عليه "تلاوة خاشعة" فقط بدون الآيات
+    generate_emerald_blue_card(fast_bg, surah_name, "تلاوة خاشعة", rec_name, font_b64, cover_file)
     cover_clip = ImageClip(cover_file).set_duration(0.10)
 
     temp_joined = f"temp_{tag}.mp4"
@@ -803,7 +799,8 @@ if __name__ == "__main__":
         week_str = local_egypt_time.strftime("%Y_%U")
         item = get_friday_kahf_chunk(history, week_str)
         print(f"🌟 يوم الجمعة المبارك بتوقيت مصر: إنتاج سورة الكهف (جزء {item['part']}) - الآيات ({item['start']}-{item['end']})...", flush=True)
-        yt_title = f"سورة الكهف كاملة | الجزء {item['part']} الآيات ({item['start']}-{item['end']}) 🌿 راحة نفسية القارئ {reciter['name']} #shorts"
+        # تم تعديل العنوان ليكون اسم السورة فقط
+        yt_title = f"سورة الكهف #shorts"
         caption = (
             f"📖 سورة الكهف - الجزء {item['part']}\n"
             f"✨ الآيات الكريمة: ({item['start']} - {item['end']})\n"
@@ -816,7 +813,8 @@ if __name__ == "__main__":
     else:
         item = pick_unposted_clip_all_quran(history)
         print(f"🎬 اختيار مقطع Shorts من القرآن: سورة {item['name']} الآيات ({item['start']}-{item['end']})...", flush=True)
-        yt_title = f"تلاوة خاشعة تريح القلوب | سورة {item['name']} الآيات ({item['start']}-{item['end']}) 🤍 القارئ {reciter['name']} #shorts"
+        # تم تعديل العنوان ليكون اسم السورة فقط
+        yt_title = f"سورة {item['name']} #shorts"
         caption = (
             f"📖 سورة {item['name']} | الآيات ({item['start']} - {item['end']})\n"
             f"🎙️ بصوت القارئ: {reciter['name']}\n\n"
@@ -865,4 +863,5 @@ if __name__ == "__main__":
 
     if os.path.exists(vid_file): os.remove(vid_file)
     if os.path.exists(cov_file): os.remove(cov_file)
+    
     print("=== اكتمل الرندر للشورتس، التحديث، والنشر بنجاح ===", flush=True)
