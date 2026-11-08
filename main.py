@@ -271,11 +271,11 @@ def post_to_buffer(video_url, yt_title, caption):
             "assets": [{"video": {"url": video_url}}]
         }
 
-        # فرز الـ IDs لمعرفة اليوتيوب من الانستجرام وتفادي أخطاء metadata
-        # (أضف IDs قنوات اليوتيوب الخاصة بك في هذه القائمة)
-        if ch_id in ["6aefb378e29c69a1719bbdca", "6aefb340e29c69a1719bb7ef", "6aa9df26ea19ca0bde51b3c5"]:
+        if ch_id == "6aefb073e29c69a1719b6d1b":
             post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
-        else:
+        elif ch_id == "6aa591a7cd8b9c702c592741": # TikTok 
+           post_input["metadata"] = {}
+        else: # Instagram
             post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
         try:
@@ -408,7 +408,6 @@ def get_friday_kahf_chunk(history, current_week_str):
     if start_a > 110:
         start_a = 1
 
-    # استهداف 25 آية كحد أقصى وسيتم إيقاف التلاوة بمجرد الوصول لـ 40-59 ثانية 
     end_limit = min(110, start_a + 25) 
     clip_key = f"kahf_{current_week_str}_{start_a}"
 
@@ -481,7 +480,6 @@ if __name__ == "__main__":
     
     item["end"] = actual_end_a
 
-    # تجهيز العناوين والوصف (بدون أرقام الآيات)
     if is_friday:
         yt_title = f"سورة الكهف #shorts"
         caption = (
@@ -517,7 +515,6 @@ if __name__ == "__main__":
 
     save_history(history)
 
-    # تقرير تليجرام الخالي من روابط جيت هاب أو أرقام الآيات
     dm_report = f"\n📺 <b>Dailymotion:</b> <a href='{dm_link}'>مشاهدة المقطع</a>" if dm_link else ""
     odysee_report = f"\n🎥 <b>Odysee:</b> <a href='{odysee_link}'>مشاهدة المقطع</a>" if odysee_link else ""
     report = (
