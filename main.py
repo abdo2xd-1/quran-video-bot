@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import base64
 import random
 import datetime
 import subprocess
@@ -271,10 +272,10 @@ def post_to_buffer(video_url, yt_title, caption):
             "assets": [{"video": {"url": video_url}}]
         }
 
-        if ch_id == "6aefb073e29c69a1719b6d1b":
+        if ch_id in ["6aefb073e29c69a1719b6d1b", "6b0395b28541f09ecb6e460d"]:
             post_input["metadata"] = {"youtube": {"title": yt_title[:95], "categoryId": "27"}}
         elif ch_id == "6aa591a7cd8b9c702c592741": # TikTok 
-           post_input["metadata"] = {}
+            post_input["metadata"] = {}
         else: # Instagram
             post_input["metadata"] = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
 
